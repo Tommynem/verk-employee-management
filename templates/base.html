@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="verk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Verk Zeiterfassung{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/output.css">
+    <script src="/static/vendor/htmx/htmx.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-base-200">
+    <!-- Navigation -->
+    <nav class="navbar bg-gradient-to-r from-brand-dark-start to-brand-dark-end text-white shadow-lg">
+        <div class="flex-1">
+            <a class="btn btn-ghost normal-case text-xl" href="/">Verk Zeiterfassung</a>
+        </div>
+        <div class="flex-none">
+            <ul class="menu menu-horizontal px-1">
+                <li><a href="/">Dashboard</a></li>
+                <li><a href="/employees">Mitarbeiter</a></li>
+                <li><a href="/time-entries">Zeiterfassung</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast toast-end z-50"></div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
