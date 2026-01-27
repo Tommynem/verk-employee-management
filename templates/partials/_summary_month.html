@@ -1,0 +1,94 @@
+{% from "macros/_icons.html" import icon %}
+
+<div class="card bg-base-100 shadow-md">
+    <div class="card-body">
+        <h2 class="card-title mb-4">
+            {{ icon("calendar", class="w-6 h-6") }}
+            Monatszusammenfassung
+        </h2>
+
+        <div class="mb-4">
+            <p class="text-lg font-semibold">
+                {{ "%02d.%d"|format(summary.month, summary.year) }}
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="stat bg-base-200 rounded-box">
+                <div class="stat-title">Gesamtstunden Ist</div>
+                <div class="stat-value text-primary">{{ summary.total_actual|hours }}</div>
+            </div>
+
+            <div class="stat bg-base-200 rounded-box">
+                <div class="stat-title">Gesamtstunden Soll</div>
+                <div class="stat-value">{{ summary.total_target|hours }}</div>
+            </div>
+
+            <div class="stat bg-base-200 rounded-box">
+                <div class="stat-title">Monatssaldo</div>
+                <div class="stat-value {% if summary.period_balance < 0 %}text-error{% elif summary.period_balance > 0 %}text-success{% endif %}">
+                    {{ summary.period_balance|hours }}
+                </div>
+            </div>
+        </div>
+
+        <div class="divider">Übertrag</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Übertrag Vormonat</span>
+                </label>
+                <p class="text-lg {% if summary.carryover_in < 0 %}text-error{% elif summary.carryover_in > 0 %}text-success{% endif %}">
+                    {{ summary.carryover_in|hours }}
+                </p>
+            </div>
+
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Übertrag Folgemonat</span>
+                </label>
+                <p class="text-lg {% if summary.carryover_out < 0 %}text-error{% elif summary.carryover_out > 0 %}text-success{% endif %}">
+                    {{ summary.carryover_out|hours }}
+                </p>
+            </div>
+        </div>
+
+        <div class="divider">Wochen</div>
+
+        <div class="space-y-4">
+            {% for week in summary.weeks %}
+            <div class="card bg-base-200">
+                <div class="card-body py-3 px-4">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="font-medium">
+                                KW {{ week.week_start.isocalendar()[1] }}
+                                <span class="text-sm text-base-content/70 ml-2">
+                                    ({{ week.week_start.strftime('%d.%m.%Y') }} - {{ week.week_end.strftime('%d.%m.') }})
+                                </span>
+                            </p>
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="text-sm">
+                                <span class="text-base-content/70">Ist:</span>
+                                <span class="font-semibold ml-1">{{ week.total_actual|hours }}</span>
+                            </div>
+                            <div class="text-sm">
+                                <span class="text-base-content/70">Soll:</span>
+                                <span class="font-semibold ml-1">{{ week.total_target|hours }}</span>
+                            </div>
+                            <div class="text-sm">
+                                <span class="text-base-content/70">Saldo:</span>
+                                <span class="font-semibold ml-1 {% if week.total_balance < 0 %}text-error{% elif week.total_balance > 0 %}text-success{% endif %}">
+                                    {{ week.total_balance|hours }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

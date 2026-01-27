@@ -21,3 +21,15 @@ def get_db() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+def get_current_user_id() -> int:
+    """Get current user ID from session/auth.
+
+    MVP: Returns hardcoded test user ID.
+    Future: Integrate with VaWW authentication.
+
+    Returns:
+        Current user's ID (hardcoded to 1 for MVP).
+    """
+    return 1

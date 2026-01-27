@@ -13,7 +13,7 @@ Usage:
     entry = TimeEntryFactory.build(user_id=42, work_date=date(2026, 1, 15))
 """
 
-from datetime import date, time
+from datetime import date, datetime, time
 from decimal import Decimal
 
 import factory
@@ -40,6 +40,8 @@ class TimeEntryFactory(factory.Factory):
     notes = None
     absence_type = AbsenceType.NONE
     status = RecordStatus.DRAFT
+    created_at = factory.LazyFunction(datetime.now)
+    updated_at = factory.LazyFunction(datetime.now)
 
 
 class VacationEntryFactory(TimeEntryFactory):
@@ -91,6 +93,8 @@ class UserSettingsFactory(factory.Factory):
     weekly_target_hours = Decimal("32.00")
     carryover_hours = None
     schedule_json = None
+    created_at = factory.LazyFunction(datetime.now)
+    updated_at = factory.LazyFunction(datetime.now)
 
 
 __all__ = [

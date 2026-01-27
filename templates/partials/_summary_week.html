@@ -1,0 +1,70 @@
+{% from "macros/_icons.html" import icon %}
+
+<div class="card bg-base-100 shadow-md">
+    <div class="card-body">
+        <h2 class="card-title mb-4">
+            {{ icon("calendar", class="w-6 h-6") }}
+            Wochenzusammenfassung
+        </h2>
+
+        <div class="mb-4">
+            <p class="text-sm text-base-content/70">
+                {{ summary.week_start.strftime('%d.%m.%Y') }} - {{ summary.week_end.strftime('%d.%m.%Y') }}
+            </p>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Tag</th>
+                        <th>Ist</th>
+                        <th>Soll</th>
+                        <th>Saldo</th>
+                        <th>Typ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for day in summary.days %}
+                    <tr>
+                        <td>{{ day.date.strftime('%a, %d.%m.%Y') }}</td>
+                        <td>{{ day.actual_hours|hours }}</td>
+                        <td>{{ day.target_hours|hours }}</td>
+                        <td class="{% if day.balance < 0 %}text-error{% elif day.balance > 0 %}text-success{% endif %}">
+                            {{ day.balance|hours }}
+                        </td>
+                        <td>
+                            {% if day.absence_type.value == 'none' %}
+                                {% if day.has_entry %}
+                                    <span class="badge badge-ghost badge-sm">Arbeit</span>
+                                {% else %}
+                                    <span class="badge badge-outline badge-sm">-</span>
+                                {% endif %}
+                            {% elif day.absence_type.value == 'vacation' %}
+                                <span class="badge badge-info badge-sm">Urlaub</span>
+                            {% elif day.absence_type.value == 'sick' %}
+                                <span class="badge badge-warning badge-sm">Krank</span>
+                            {% elif day.absence_type.value == 'holiday' %}
+                                <span class="badge badge-success badge-sm">Feiertag</span>
+                            {% elif day.absence_type.value == 'flex_time' %}
+                                <span class="badge badge-accent badge-sm">Zeitausgleich</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="font-bold">
+                        <td>Gesamt</td>
+                        <td>{{ summary.total_actual|hours }}</td>
+                        <td>{{ summary.total_target|hours }}</td>
+                        <td class="{% if summary.total_balance < 0 %}text-error{% elif summary.total_balance > 0 %}text-success{% endif %}">
+                            {{ summary.total_balance|hours }}
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>

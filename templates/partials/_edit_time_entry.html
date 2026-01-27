@@ -1,0 +1,131 @@
+{% from "macros/_icons.html" import icon %}
+
+<div class="card bg-base-100 shadow-md">
+    <div class="card-body">
+        <h2 class="card-title mb-4">
+            {{ icon("edit", class="w-6 h-6") }}
+            Zeiteintrag bearbeiten
+        </h2>
+
+        <form hx-patch="/time-entries/{{ entry.id }}"
+              hx-target="#detail-pane"
+              hx-swap="innerHTML">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Datum</span>
+                    </label>
+                    <input type="date"
+                           name="work_date"
+                           value="{{ entry.work_date.strftime('%Y-%m-%d') }}"
+                           class="input input-bordered w-full"
+                           required>
+                </div>
+
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Typ</span>
+                    </label>
+                    <select name="absence_type"
+                            id="absence_type"
+                            class="select select-bordered w-full"
+                            onchange="toggleTimeFields()">
+                        <option value="none" {% if entry.absence_type.value == 'none' %}selected{% endif %}>Arbeit</option>
+                        <option value="vacation" {% if entry.absence_type.value == 'vacation' %}selected{% endif %}>Urlaub</option>
+                        <option value="sick" {% if entry.absence_type.value == 'sick' %}selected{% endif %}>Krank</option>
+                        <option value="holiday" {% if entry.absence_type.value == 'holiday' %}selected{% endif %}>Feiertag</option>
+                        <option value="flex_time" {% if entry.absence_type.value == 'flex_time' %}selected{% endif %}>Zeitausgleich</option>
+                    </select>
+                </div>
+
+                <div class="form-control" id="start_time_field">
+                    <label class="label">
+                        <span class="label-text">Startzeit</span>
+                    </label>
+                    <input type="time"
+                           name="start_time"
+                           value="{{ entry.start_time.strftime('%H:%M') if entry.start_time else '' }}"
+                           class="input input-bordered w-full">
+                </div>
+
+                <div class="form-control" id="end_time_field">
+                    <label class="label">
+                        <span class="label-text">Endzeit</span>
+                    </label>
+                    <input type="time"
+                           name="end_time"
+                           value="{{ entry.end_time.strftime('%H:%M') if entry.end_time else '' }}"
+                           class="input input-bordered w-full">
+                </div>
+
+                <div class="form-control" id="break_minutes_field">
+                    <label class="label">
+                        <span class="label-text">Pause (Minuten)</span>
+                    </label>
+                    <input type="number"
+                           name="break_minutes"
+                           value="{{ entry.break_minutes }}"
+                           min="0"
+                           class="input input-bordered w-full">
+                </div>
+
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Status</span>
+                    </label>
+                    <select name="status"
+                            class="select select-bordered w-full">
+                        <option value="draft" {% if entry.status.value == 'draft' %}selected{% endif %}>Entwurf</option>
+                        <option value="submitted" {% if entry.status.value == 'submitted' %}selected{% endif %}>Abgegeben</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-control mt-4">
+                <label class="label">
+                    <span class="label-text">Notizen</span>
+                </label>
+                <textarea name="notes"
+                          class="textarea textarea-bordered"
+                          rows="3"
+                          placeholder="Optional">{{ entry.notes or '' }}</textarea>
+            </div>
+
+            <div class="card-actions justify-end mt-6">
+                <button type="button"
+                        class="btn btn-ghost"
+                        hx-get="/time-entries/{{ entry.id }}"
+                        hx-target="#detail-pane"
+                        hx-swap="innerHTML">
+                    Abbrechen
+                </button>
+                <button type="submit"
+                        class="btn btn-primary">
+                    {{ icon("check", class="w-4 h-4") }}
+                    Speichern
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleTimeFields() {
+    const absenceType = document.getElementById('absence_type').value;
+    const timeFields = ['start_time_field', 'end_time_field', 'break_minutes_field'];
+
+    if (absenceType === 'none') {
+        timeFields.forEach(fieldId => {
+            document.getElementById(fieldId).style.display = 'block';
+        });
+    } else {
+        timeFields.forEach(fieldId => {
+            document.getElementById(fieldId).style.display = 'none';
+        });
+    }
+}
+
+// Initialize on load
+toggleTimeFields();
+</script>

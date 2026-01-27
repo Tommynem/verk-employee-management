@@ -6,8 +6,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-# Future routers - uncomment as implemented
-# from source.api.routers import dashboard
+# Import routers
+from source.api.routers import summaries, time_entries
 
 app = FastAPI(
     title="Verk Zeiterfassung",
@@ -60,8 +60,9 @@ async def server_error_handler(request: Request, exc: Exception) -> HTMLResponse
     return templates.TemplateResponse("pages/500.html", {"request": request}, status_code=500)
 
 
-# Future routers - uncomment as implemented
-# app.include_router(dashboard.router)
+# Include routers
+app.include_router(time_entries.router)
+app.include_router(summaries.router)
 
 
 @app.get("/api/health")

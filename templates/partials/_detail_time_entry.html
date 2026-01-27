@@ -1,0 +1,121 @@
+{% from "macros/_icons.html" import icon %}
+
+<div class="card bg-base-100 shadow-md">
+    <div class="card-body">
+        <div class="flex justify-between items-start mb-4">
+            <h2 class="card-title">
+                {{ icon("clock", class="w-6 h-6") }}
+                Zeiteintrag vom {{ entry.work_date.strftime('%d.%m.%Y') }}
+            </h2>
+            <div class="flex gap-2">
+                <button class="btn btn-sm btn-ghost"
+                        hx-get="/time-entries/{{ entry.id }}/edit"
+                        hx-target="#detail-pane"
+                        hx-swap="innerHTML">
+                    {{ icon("edit", class="w-4 h-4") }}
+                    Bearbeiten
+                </button>
+                <button class="btn btn-sm btn-error"
+                        hx-delete="/time-entries/{{ entry.id }}"
+                        hx-confirm="Eintrag wirklich löschen?"
+                        hx-target="#detail-pane"
+                        hx-swap="innerHTML">
+                    {{ icon("trash-2", class="w-4 h-4") }}
+                    Löschen
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Datum</span>
+                </label>
+                <p class="text-lg">{{ entry.work_date.strftime('%d.%m.%Y') }}</p>
+            </div>
+
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Typ</span>
+                </label>
+                <div>
+                    {% if entry.absence_type.value == 'none' %}
+                        <span class="badge badge-ghost">Arbeit</span>
+                    {% elif entry.absence_type.value == 'vacation' %}
+                        <span class="badge badge-info">Urlaub</span>
+                    {% elif entry.absence_type.value == 'sick' %}
+                        <span class="badge badge-warning">Krank</span>
+                    {% elif entry.absence_type.value == 'holiday' %}
+                        <span class="badge badge-success">Feiertag</span>
+                    {% elif entry.absence_type.value == 'flex_time' %}
+                        <span class="badge badge-accent">Zeitausgleich</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if entry.start_time %}
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Startzeit</span>
+                </label>
+                <p class="text-lg">{{ entry.start_time.strftime('%H:%M') }}</p>
+            </div>
+            {% endif %}
+
+            {% if entry.end_time %}
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Endzeit</span>
+                </label>
+                <p class="text-lg">{{ entry.end_time.strftime('%H:%M') }}</p>
+            </div>
+            {% endif %}
+
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Pause</span>
+                </label>
+                <p class="text-lg">{{ entry.break_minutes|minutes }}</p>
+            </div>
+
+            {% if entry.start_time and entry.end_time %}
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Arbeitsstunden</span>
+                </label>
+                {% set hours = ((entry.end_time.hour * 60 + entry.end_time.minute) - (entry.start_time.hour * 60 + entry.start_time.minute) - entry.break_minutes) / 60 %}
+                <p class="text-lg font-bold text-primary">{{ hours|hours }}</p>
+            </div>
+            {% endif %}
+
+            <div>
+                <label class="label">
+                    <span class="label-text font-semibold">Status</span>
+                </label>
+                <div>
+                    {% if entry.status.value == 'draft' %}
+                        <span class="badge badge-outline">Entwurf</span>
+                    {% elif entry.status.value == 'submitted' %}
+                        <span class="badge badge-primary">Abgegeben</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if entry.notes %}
+        <div class="mt-4">
+            <label class="label">
+                <span class="label-text font-semibold">Notizen</span>
+            </label>
+            <p class="text-base-content/80">{{ entry.notes }}</p>
+        </div>
+        {% endif %}
+
+        <div class="divider"></div>
+
+        <div class="text-sm text-base-content/50">
+            <p>Erstellt: {{ entry.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+            <p>Aktualisiert: {{ entry.updated_at.strftime('%d.%m.%Y %H:%M') }}</p>
+        </div>
+    </div>
+</div>

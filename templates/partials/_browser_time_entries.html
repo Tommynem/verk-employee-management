@@ -1,0 +1,77 @@
+{% from "macros/_icons.html" import icon %}
+
+<div class="overflow-x-auto">
+    {% if entries %}
+    <table class="table table-zebra w-full">
+        <thead>
+            <tr>
+                <th>Datum</th>
+                <th>Start</th>
+                <th>Ende</th>
+                <th>Pause</th>
+                <th>Stunden</th>
+                <th>Typ</th>
+                <th>Status</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in entries %}
+            <tr hx-get="/time-entries/{{ entry.id }}"
+                hx-target="#detail-pane"
+                hx-swap="innerHTML"
+                class="hover cursor-pointer">
+                <td>{{ entry.work_date.strftime('%d.%m.%Y') }}</td>
+                <td>{{ entry.start_time.strftime('%H:%M') if entry.start_time else '-' }}</td>
+                <td>{{ entry.end_time.strftime('%H:%M') if entry.end_time else '-' }}</td>
+                <td>{{ entry.break_minutes|minutes }}</td>
+                <td>
+                    {% if entry.start_time and entry.end_time %}
+                        {% set hours = ((entry.end_time.hour * 60 + entry.end_time.minute) - (entry.start_time.hour * 60 + entry.start_time.minute) - entry.break_minutes) / 60 %}
+                        {{ hours|hours }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if entry.absence_type.value == 'none' %}
+                        <span class="badge badge-ghost">Arbeit</span>
+                    {% elif entry.absence_type.value == 'vacation' %}
+                        <span class="badge badge-info">Urlaub</span>
+                    {% elif entry.absence_type.value == 'sick' %}
+                        <span class="badge badge-warning">Krank</span>
+                    {% elif entry.absence_type.value == 'holiday' %}
+                        <span class="badge badge-success">Feiertag</span>
+                    {% elif entry.absence_type.value == 'flex_time' %}
+                        <span class="badge badge-accent">Zeitausgleich</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if entry.status.value == 'draft' %}
+                        <span class="badge badge-outline">Entwurf</span>
+                    {% elif entry.status.value == 'submitted' %}
+                        <span class="badge badge-primary">Abgegeben</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <button class="btn btn-ghost btn-xs"
+                            hx-get="/time-entries/{{ entry.id }}"
+                            hx-target="#detail-pane"
+                            hx-swap="innerHTML">
+                        {{ icon("eye", class="w-4 h-4") }}
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="text-center py-12">
+        <div class="text-base-content/50 mb-4">
+            {{ icon("inbox", class="w-16 h-16 mx-auto") }}
+        </div>
+        <p class="text-lg font-medium text-base-content/70">Keine Zeiteinträge gefunden</p>
+        <p class="text-sm text-base-content/50 mt-2">Erstellen Sie einen neuen Eintrag, um zu beginnen.</p>
+    </div>
+    {% endif %}
+</div>
