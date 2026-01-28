@@ -13,7 +13,7 @@ Routes tested:
 - DELETE /time-entries/{id} -> 204 No Content
 """
 
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 from source.database.enums import RecordStatus
@@ -777,3 +777,597 @@ class TestNewRowWeekdayDefaults:
         assert "09:00" in response.text  # start_time
         assert "17:30" in response.text  # end_time
         assert "45" in response.text  # break_minutes
+
+
+class TestParseTimeString:
+    """Test parse_time_string helper function.
+
+    TDD RED phase: Tests for extracting duplicate time parsing logic.
+    """
+
+    def test_parse_valid_time_string(self, client, db_session):
+        """Valid HH:MM format returns correct time object."""
+        from source.api.routers.time_entries import parse_time_string
+
+        result = parse_time_string("07:30", "Startzeit")
+
+        assert result is not None
+        assert result.hour == 7
+        assert result.minute == 30
+
+    def test_parse_time_string_none_returns_none(self, client, db_session):
+        """None input returns None."""
+        from source.api.routers.time_entries import parse_time_string
+
+        result = parse_time_string(None, "Startzeit")
+
+        assert result is None
+
+    def test_parse_time_string_empty_returns_none(self, client, db_session):
+        """Empty string returns None."""
+        from source.api.routers.time_entries import parse_time_string
+
+        result = parse_time_string("", "Startzeit")
+
+        assert result is None
+
+    def test_parse_time_string_invalid_format_raises_422(self, client, db_session):
+        """Invalid format raises HTTPException 422."""
+        import pytest
+        from fastapi import HTTPException
+
+        from source.api.routers.time_entries import parse_time_string
+
+        with pytest.raises(HTTPException) as exc_info:
+            parse_time_string("invalid", "Startzeit")
+
+        assert exc_info.value.status_code == 422
+        assert "Ungültige Startzeit" in exc_info.value.detail
+
+    def test_parse_time_string_invalid_hours_raises_422(self, client, db_session):
+        """Invalid hours (e.g., 25:00) raises HTTPException 422."""
+        import pytest
+        from fastapi import HTTPException
+
+        from source.api.routers.time_entries import parse_time_string
+
+        with pytest.raises(HTTPException) as exc_info:
+            parse_time_string("25:00", "Endzeit")
+
+        assert exc_info.value.status_code == 422
+        assert "Ungültige Endzeit" in exc_info.value.detail
+
+    def test_parse_time_string_invalid_minutes_raises_422(self, client, db_session):
+        """Invalid minutes (e.g., 12:60) raises HTTPException 422."""
+        import pytest
+        from fastapi import HTTPException
+
+        from source.api.routers.time_entries import parse_time_string
+
+        with pytest.raises(HTTPException) as exc_info:
+            parse_time_string("12:60", "Startzeit")
+
+        assert exc_info.value.status_code == 422
+        assert "Ungültige Startzeit" in exc_info.value.detail
+
+    def test_parse_time_string_midnight(self, client, db_session):
+        """00:00 format is valid."""
+        from source.api.routers.time_entries import parse_time_string
+
+        result = parse_time_string("00:00", "Startzeit")
+
+        assert result is not None
+        assert result.hour == 0
+        assert result.minute == 0
+
+    def test_parse_time_string_end_of_day(self, client, db_session):
+        """23:59 format is valid."""
+        from source.api.routers.time_entries import parse_time_string
+
+        result = parse_time_string("23:59", "Endzeit")
+
+        assert result is not None
+        assert result.hour == 23
+        assert result.minute == 59
+
+
+class TestGetDailyTargetHours:
+    """Test get_daily_target_hours helper function."""
+
+    def test_returns_default_when_no_settings(self, db_session):
+        """Returns 8.00 hours when no UserSettings exist."""
+        from source.api.routers.time_entries import get_daily_target_hours
+
+        result = get_daily_target_hours(db_session, user_id=1)
+
+        assert result == Decimal("8.00")
+
+    def test_calculates_from_weekly_target(self, db_session):
+        """Calculates daily target from weekly_target_hours / 5."""
+        # Create settings with 40h/week
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        from source.api.routers.time_entries import get_daily_target_hours
+
+        result = get_daily_target_hours(db_session, user_id=1)
+
+        assert result == Decimal("8.00")
+
+    def test_calculates_from_custom_weekly_target(self, db_session):
+        """Calculates daily target for custom weekly hours."""
+        # Create settings with 35h/week
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("35.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        from source.api.routers.time_entries import get_daily_target_hours
+
+        result = get_daily_target_hours(db_session, user_id=1)
+
+        assert result == Decimal("7.00")
+
+    def test_rounds_to_two_decimals(self, db_session):
+        """Result is quantized to 2 decimal places."""
+        # Create settings with 37.5h/week (should be 7.50 daily)
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("37.50"))
+        db_session.add(settings)
+        db_session.commit()
+
+        from source.api.routers.time_entries import get_daily_target_hours
+
+        result = get_daily_target_hours(db_session, user_id=1)
+
+        assert result == Decimal("7.50")
+        # Verify it has exactly 2 decimal places
+        assert str(result) == "7.50"
+
+
+class TestWeeklySummaryEndpoint:
+    """Test GET /time-entries/summary/week endpoint for weekly mini-summary.
+
+    TDD RED phase: Tests should fail because endpoint doesn't exist yet.
+    """
+
+    def test_weekly_summary_success(self, client, db_session):
+        """GET /time-entries/summary/week returns 200 with weekly summary JSON."""
+        # Create settings with 40h/week target
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create entries for current week (2026-01-27 is a Tuesday)
+        # Monday 2026-01-26: 8h
+        entry1 = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 26), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+        )
+        # Tuesday 2026-01-27: 8h
+        entry2 = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 27), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+        )
+        db_session.add_all([entry1, entry2])
+        db_session.commit()
+
+        response = client.get("/time-entries/summary/week")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+        data = response.json()
+
+        # Should have total_actual, total_target, total_balance
+        assert "total_actual" in data
+        assert "total_target" in data
+        assert "total_balance" in data
+
+    def test_weekly_summary_calculates_current_week(self, client, db_session):
+        """Weekly summary calculates Monday-Sunday of current week."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create entries for current week (2026-01-26 to 2026-01-31)
+        # Monday-Friday: 8h each = 40h actual
+        for day_offset in range(5):
+            entry = TimeEntryFactory.build(
+                user_id=1,
+                work_date=date(2026, 1, 26) + timedelta(days=day_offset),
+                start_time=time(8, 0),
+                end_time=time(16, 0),
+                break_minutes=0,
+            )
+            db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/summary/week")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 40h actual (5 days × 8h)
+        assert float(data["total_actual"]) == 40.0
+        # 40h target (weekly target)
+        assert float(data["total_target"]) == 40.0
+        # Balance should be 0
+        assert float(data["total_balance"]) == 0.0
+
+    def test_weekly_summary_shows_negative_balance(self, client, db_session):
+        """Weekly summary shows negative balance when under target."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create only 2 days with 8h each = 16h actual
+        entry1 = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 26), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+        )
+        entry2 = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 27), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+        )
+        db_session.add_all([entry1, entry2])
+        db_session.commit()
+
+        response = client.get("/time-entries/summary/week")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 16h actual (2 days × 8h)
+        assert float(data["total_actual"]) == 16.0
+        # 40h target (5 workdays × 8h)
+        assert float(data["total_target"]) == 40.0
+        # Balance should be -24h
+        assert float(data["total_balance"]) == -24.0
+
+    def test_weekly_summary_shows_positive_balance(self, client, db_session):
+        """Weekly summary shows positive balance when over target."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create 5 days with 10h each = 50h actual
+        for day_offset in range(5):
+            entry = TimeEntryFactory.build(
+                user_id=1,
+                work_date=date(2026, 1, 26) + timedelta(days=day_offset),
+                start_time=time(7, 0),
+                end_time=time(17, 0),
+                break_minutes=0,
+            )
+            db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/summary/week")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 50h actual (5 days × 10h)
+        assert float(data["total_actual"]) == 50.0
+        # 40h target
+        assert float(data["total_target"]) == 40.0
+        # Balance should be +10h
+        assert float(data["total_balance"]) == 10.0
+
+    def test_weekly_summary_accepts_date_parameter(self, client, db_session):
+        """GET /time-entries/summary/week?date=2026-01-15 calculates for that week."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create entry for different week (2026-01-13 is a Monday)
+        entry = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 13), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        # Request week containing 2026-01-15
+        response = client.get("/time-entries/summary/week?date=2026-01-15")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should calculate for week of Jan 13-19
+        assert float(data["total_actual"]) == 8.0
+
+
+class TestWeeklySummaryDisplay:
+    """Test weekly summary display on browser view.
+
+    TDD: Tests for weekly mini-summary display above monthly table.
+    """
+
+    def test_browser_view_includes_weekly_summary(self, client, db_session):
+        """Browser view includes weekly summary card."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create entries for current week (2026-01-26 is Monday)
+        entry = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 26), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Should include weekly summary text
+        assert "Diese Woche" in response.text or "Woche" in response.text
+
+    def test_weekly_summary_shows_actual_target_balance(self, client, db_session):
+        """Weekly summary displays actual, target, and balance hours."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create 3 days with 8h each = 24h actual, 40h target, -16h balance
+        for day_offset in range(3):
+            entry = TimeEntryFactory.build(
+                user_id=1,
+                work_date=date(2026, 1, 26) + timedelta(days=day_offset),
+                start_time=time(8, 0),
+                end_time=time(16, 0),
+                break_minutes=0,
+            )
+            db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Should show actual hours
+        assert "24" in response.text
+        # Should show target hours
+        assert "40" in response.text
+
+    def test_weekly_summary_shows_positive_balance_in_green(self, client, db_session):
+        """Weekly summary displays positive balance in green color."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create 5 days with 10h each = 50h actual, +10h balance
+        for day_offset in range(5):
+            entry = TimeEntryFactory.build(
+                user_id=1,
+                work_date=date(2026, 1, 26) + timedelta(days=day_offset),
+                start_time=time(7, 0),
+                end_time=time(17, 0),
+                break_minutes=0,
+            )
+            db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Should have positive balance indicator (+ or success color)
+        assert "+10" in response.text or "text-success" in response.text
+
+    def test_weekly_summary_shows_negative_balance_in_red(self, client, db_session):
+        """Weekly summary displays negative balance in red color."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create only 2 days = 16h actual, -24h balance
+        for day_offset in range(2):
+            entry = TimeEntryFactory.build(
+                user_id=1,
+                work_date=date(2026, 1, 26) + timedelta(days=day_offset),
+                start_time=time(8, 0),
+                end_time=time(16, 0),
+                break_minutes=0,
+            )
+            db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Should have negative balance indicator (− or error color)
+        assert "−24" in response.text or "-24" in response.text or "text-error" in response.text
+
+
+class TestDailyTargetHoursIntegration:
+    """Test that daily_target_hours is passed to templates correctly."""
+
+    def test_list_view_uses_custom_target(self, client, db_session):
+        """List view shows custom daily target hours in rendered rows."""
+        # Create custom settings (35h/week = 7h daily)
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("35.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create entry with 7 hours work
+        entry = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 15), start_time=time(8, 0), end_time=time(15, 0), break_minutes=0
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Should show 7:00h as target hours (not default 8:00h)
+        assert "7:00h" in response.text
+        # Verify it's in the target hours column
+        assert '<td class="py-3 px-4 text-sm">7:00h</td>' in response.text
+
+    def test_create_entry_uses_custom_target(self, client, db_session):
+        """Create entry returns row with custom daily target hours."""
+        # Create custom settings (35h/week = 7h daily)
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("35.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.post(
+            "/time-entries",
+            data={
+                "work_date": "2026-01-15",
+                "start_time": "08:00",
+                "end_time": "15:00",
+                "break_minutes": "0",
+                "notes": "",
+            },
+        )
+
+        assert response.status_code == 201
+        # Should show 7:00h as target hours in returned row
+        assert "7:00h" in response.text
+        # Verify it's in the target hours column
+        assert '<td class="py-3 px-4 text-sm">7:00h</td>' in response.text
+
+    def test_update_entry_uses_custom_target(self, client, db_session):
+        """Update entry returns row with custom daily target hours."""
+        # Create custom settings (35h/week = 7h daily)
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("35.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        # Create entry
+        entry = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 15), start_time=time(8, 0), end_time=time(15, 0), break_minutes=0
+        )
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        response = client.patch(f"/time-entries/{entry.id}", data={"break_minutes": "30"})
+
+        assert response.status_code == 200
+        # Should show 7:00h as target hours in returned row
+        assert "7:00h" in response.text
+        # Verify it's in the target hours column
+        assert '<td class="py-3 px-4 text-sm">7:00h</td>' in response.text
+
+
+class TestCopyLastEntry:
+    """Test GET /time-entries/last endpoint for copy-last-entry feature.
+
+    This endpoint returns the most recent entry's times (start_time, end_time, break_minutes)
+    as JSON to enable quick duplication of routine entries.
+
+    TDD RED phase: Tests should fail because endpoint doesn't exist yet.
+    """
+
+    def test_get_last_entry_success(self, client, db_session):
+        """GET /time-entries/last returns 200 with JSON containing last entry's times."""
+        # Create entries with different dates
+        older_entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 10),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=30,
+        )
+        latest_entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 30),
+            break_minutes=45,
+        )
+        db_session.add_all([older_entry, latest_entry])
+        db_session.commit()
+
+        response = client.get("/time-entries/last")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+        data = response.json()
+        # Should return latest entry's times
+        assert data["start_time"] == "09:00"
+        assert data["end_time"] == "17:30"
+        assert data["break_minutes"] == 45
+
+    def test_get_last_entry_no_entries(self, client, db_session):
+        """GET /time-entries/last returns 404 when no entries exist for user."""
+        response = client.get("/time-entries/last")
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "detail" in data
+        assert "keine einträge" in data["detail"].lower() or "not found" in data["detail"].lower()
+
+    def test_get_last_entry_returns_most_recent_by_date(self, client, db_session):
+        """Endpoint returns entry with most recent work_date, not most recent created_at."""
+        # Create entries in reverse chronological order (latest work_date created first)
+        latest_work_date = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 20),
+            start_time=time(10, 0),
+            end_time=time(18, 0),
+            break_minutes=60,
+        )
+        older_work_date = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 10),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=30,
+        )
+        db_session.add(latest_work_date)
+        db_session.commit()
+        db_session.add(older_work_date)
+        db_session.commit()
+
+        response = client.get("/time-entries/last")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should return entry with latest work_date (Jan 20), not oldest created_at
+        assert data["start_time"] == "10:00"
+        assert data["end_time"] == "18:00"
+        assert data["break_minutes"] == 60
+
+    def test_get_last_entry_only_returns_time_fields(self, client, db_session):
+        """Response only includes time-related fields, not date or notes."""
+        entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            break_minutes=30,
+            notes="Sensitive project work",
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/last")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should include time fields
+        assert "start_time" in data
+        assert "end_time" in data
+        assert "break_minutes" in data
+        # Should NOT include date, notes, or absence_type
+        assert "work_date" not in data
+        assert "notes" not in data
+        assert "absence_type" not in data
+
+    def test_get_last_entry_handles_null_times(self, client, db_session):
+        """Endpoint handles entries with null start_time/end_time (absence days)."""
+        # Create absence entry with no times
+        absence_entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=None,
+            end_time=None,
+            break_minutes=0,
+        )
+        db_session.add(absence_entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/last")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should return null values for times
+        assert data["start_time"] is None
+        assert data["end_time"] is None
+        assert data["break_minutes"] == 0

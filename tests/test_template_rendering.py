@@ -18,8 +18,8 @@ from tests.factories import TimeEntryFactory, UserSettingsFactory
 class TestTableHeaderStructure:
     """Verify table header matches spec section 5.2-5.3."""
 
-    def test_table_header_has_all_ten_columns(self, client, db_session):
-        """Table header has all 10 required columns in correct order per spec 5.3."""
+    def test_table_header_has_all_columns(self, client, db_session):
+        """Table header has all required columns in correct order per spec 5.3."""
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("32.00"))
         entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
         db_session.add(settings)
@@ -29,7 +29,7 @@ class TestTableHeaderStructure:
         response = client.get("/time-entries?month=1&year=2026")
         html = response.text
 
-        # All column headers must be present
+        # All column headers must be present (now with Quick Absence Buttons column)
         expected_headers = [
             "Tag",
             "Ankunft",
@@ -39,8 +39,7 @@ class TestTableHeaderStructure:
             "Arbeitsstunden Soll",
             "+/-",
             "Abwesenheit / Bemerkung",
-            "Zeitausgleich",
-            "Urlaub?",
+            "Abwesenheit",  # Quick absence buttons column
         ]
 
         for header in expected_headers:
@@ -254,11 +253,11 @@ class TestSummaryCards:
         assert "Überstunden" in html
 
 
-class TestCheckboxes:
-    """Verify checkbox columns match spec section 5.3."""
+class TestQuickAbsenceButtons:
+    """Verify quick absence buttons column (replaces checkboxes)."""
 
-    def test_zeitausgleich_checkbox_column_exists(self, client, db_session):
-        """Zeitausgleich checkbox column exists per spec 5.3."""
+    def test_absence_column_exists(self, client, db_session):
+        """Abwesenheit column with quick buttons exists."""
         settings = UserSettingsFactory.build(user_id=1)
         entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15), absence_type=AbsenceType.NONE)
         db_session.add(settings)
@@ -268,27 +267,16 @@ class TestCheckboxes:
         response = client.get("/time-entries?month=1&year=2026")
         html = response.text
 
-        # Should have Zeitausgleich header
-        assert "Zeitausgleich" in html
-        # Should have checkbox inputs
-        assert 'type="checkbox"' in html
+        # Should have Abwesenheit header
+        assert "Abwesenheit" in html
+        # Should have quick action buttons (not checkboxes)
+        assert 'aria-label="Urlaub"' in html
+        assert 'aria-label="Krank"' in html
+        assert 'aria-label="Feiertag"' in html
+        assert 'aria-label="Gleitzeit"' in html
 
-    def test_urlaub_checkbox_column_exists(self, client, db_session):
-        """Urlaub checkbox column exists per spec 5.3."""
-        settings = UserSettingsFactory.build(user_id=1)
-        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15), absence_type=AbsenceType.NONE)
-        db_session.add(settings)
-        db_session.add(entry)
-        db_session.commit()
-
-        response = client.get("/time-entries?month=1&year=2026")
-        html = response.text
-
-        # Should have Urlaub? header
-        assert "Urlaub?" in html
-
-    def test_checkboxes_have_htmx_patch_attributes(self, client, db_session):
-        """Checkboxes use HTMX PATCH for updates per spec 10.2."""
+    def test_absence_buttons_use_htmx_patch(self, client, db_session):
+        """Quick absence buttons use HTMX PATCH for updates."""
         settings = UserSettingsFactory.build(user_id=1)
         entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
         db_session.add(settings)
@@ -299,7 +287,7 @@ class TestCheckboxes:
         response = client.get("/time-entries?month=1&year=2026")
         html = response.text
 
-        # Checkboxes should use hx-patch
+        # Buttons should use hx-patch
         assert "hx-patch=" in html
         # Should target the specific entry ID
         assert f"/time-entries/{entry.id}" in html
@@ -355,16 +343,45 @@ class TestEmptyState:
         # Should show empty state message
         assert "Keine Zeiteinträge" in html or "keine" in html.lower()
 
-    def test_empty_state_does_not_show_table_header(self, client, db_session):
-        """Empty state does not render table header when no entries."""
+    def test_empty_state_shows_table_with_add_button(self, client, db_session):
+        """Empty state shows table structure with add button for HTMX functionality."""
         response = client.get("/time-entries?month=1&year=2026")
         html = response.text
 
-        # Should not have table structure when empty
-        # (Empty state should show instead)
-        if "Keine Zeiteinträge" in html:
-            # If empty state is shown, specific column headers should not all be present
-            # (Some words like "Tag" might appear in empty state text, so check for full header row)
-            assert not (
-                "Ankunft" in html and "Ende" in html and "Arbeitsstunden Real" in html and "Zeitausgleich" in html
-            )
+        # Should show empty state message within the table structure
+        assert "Keine Zeiteinträge" in html
+        # Table headers should be present (required for HTMX add-row targeting)
+        assert "Ankunft" in html and "Ende" in html
+        # Add button should be available
+        assert "Ersten Eintrag hinzufügen" in html
+
+
+class TestCopyLastEntryButton:
+    """Test copy-last-entry button appears in edit row."""
+
+    def test_copy_button_exists_in_new_row(self, client, db_session):
+        """Copy Last button exists in new entry row."""
+        response = client.get("/time-entries/new-row")
+        html = response.text
+
+        # Should contain Copy Last button with correct title
+        assert "Letzte kopieren" in html
+        # Should have onclick handler
+        assert "copyLastEntry" in html
+        # Should use clipboard icon (check for SVG clipboard path)
+        assert 'width="8" height="4" x="8" y="2"' in html  # Clipboard SVG rect
+
+    def test_copy_button_exists_in_edit_row(self, client, db_session):
+        """Copy Last button exists when editing existing entry."""
+        # Create entry to edit
+        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        response = client.get(f"/time-entries/{entry.id}/edit-row")
+        html = response.text
+
+        # Should contain Copy Last button
+        assert "Letzte kopieren" in html
+        assert "copyLastEntry" in html

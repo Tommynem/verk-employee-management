@@ -3,7 +3,8 @@
 Routes follow VaWW REST+HTMX pattern with HTML partial responses.
 """
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
@@ -15,27 +16,92 @@ from sqlalchemy.orm import Session
 from source.api.context import render_template
 from source.api.dependencies import get_current_user_id, get_db
 from source.api.schemas import TimeEntryCreate, TimeEntryUpdate
+from source.core.holidays import is_holiday
+from source.core.i18n import GERMAN_MONTHS
+from source.database import calculations
 from source.database.enums import AbsenceType, RecordStatus
 from source.database.models import TimeEntry, UserSettings
 from source.services.time_calculation import TimeCalculationService
 
 router = APIRouter(prefix="/time-entries", tags=["time-entries"])
 
-# German month names
-GERMAN_MONTHS = {
-    1: "Januar",
-    2: "Februar",
-    3: "März",
-    4: "April",
-    5: "Mai",
-    6: "Juni",
-    7: "Juli",
-    8: "August",
-    9: "September",
-    10: "Oktober",
-    11: "November",
-    12: "Dezember",
-}
+
+def get_daily_target_hours(db: Session, user_id: int = 1) -> Decimal:
+    """Get daily target hours from user settings.
+
+    Args:
+        db: Database session
+        user_id: User ID to fetch settings for
+
+    Returns:
+        Daily target hours (weekly_target_hours / 5) quantized to 2 decimal places.
+        Returns 8.00 if no settings found.
+    """
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    if not settings:
+        return Decimal("8.00")
+    return (settings.weekly_target_hours / Decimal("5")).quantize(Decimal("0.01"))
+
+
+def parse_time_string(time_str: str | None, field_name: str) -> time | None:
+    """Parse time string in HH:MM format to time object.
+
+    Args:
+        time_str: Time string in HH:MM format or None
+        field_name: Name of field for error message (e.g., "Startzeit", "Endzeit")
+
+    Returns:
+        Time object if parsing successful, None if input is None or empty
+
+    Raises:
+        HTTPException: 422 if time_str format is invalid
+    """
+    if not time_str:
+        return None
+
+    try:
+        hours, minutes = map(int, time_str.split(":"))
+        return time(hours, minutes)
+    except (ValueError, AttributeError) as e:
+        raise HTTPException(status_code=422, detail=f"Ungültige {field_name}") from e
+
+
+def get_entry_context(entry: TimeEntry, db: Session, user_id: int) -> dict:
+    """Prepare template context for a time entry with calculated values.
+
+    Args:
+        entry: TimeEntry instance
+        db: Database session
+        user_id: User ID to fetch settings for
+
+    Returns:
+        Dictionary with entry and calculated values (actual_hours, target_hours, balance, holiday info)
+    """
+    # Get user settings
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    if not settings:
+        # Create default settings if not found
+        settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+
+    # Calculate values using calculations module
+    actual_hours_value = calculations.actual_hours(entry)
+    target_hours_value = calculations.target_hours(entry, settings)
+    balance_value = calculations.balance(entry, settings)
+
+    # Check if date is a holiday
+    is_holiday_date, holiday_name = is_holiday(entry.work_date, return_name=True)
+
+    return {
+        "entry": entry,
+        "actual_hours": actual_hours_value,
+        "target_hours": target_hours_value,
+        "balance": balance_value,
+        "is_holiday": is_holiday_date,
+        "holiday_name": holiday_name,
+    }
 
 
 @router.get("", response_class=HTMLResponse)
@@ -46,18 +112,27 @@ async def list_time_entries(
     month: int | None = Query(None, ge=1, le=12),
     year: int | None = Query(None, ge=2020, le=2100),
 ) -> HTMLResponse:
-    """List time entries with optional month/year filtering.
+    """List time entries with month/year filtering.
+
+    If month/year not provided, redirects to current month.
 
     Args:
         request: FastAPI request object
         db: Database session
         user_id: Current user ID from auth
-        month: Optional month filter (1-12)
-        year: Optional year filter (2020-2100)
+        month: Month filter (1-12), defaults to current month
+        year: Year filter (2020-2100), defaults to current year
 
     Returns:
-        HTML response with browser view of time entries
+        HTML response with browser view of time entries, or redirect
     """
+    # Redirect to current month if no month/year specified
+    if month is None or year is None:
+        from fastapi.responses import RedirectResponse
+
+        today = date.today()
+        return RedirectResponse(url=f"/time-entries?month={today.month}&year={today.year}", status_code=302)
+
     # Build query
     query = db.query(TimeEntry).filter(TimeEntry.user_id == user_id)
 
@@ -73,8 +148,56 @@ async def list_time_entries(
     # Order by date descending
     entries = query.order_by(TimeEntry.work_date.desc()).all()
 
+    # Get user settings for calculations
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    if not settings:
+        settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+
+    # Pre-compute calculated values for each entry
+    entries_with_calculations = []
+    for entry in entries:
+        # Check if date is a holiday
+        is_holiday_date, holiday_name = is_holiday(entry.work_date, return_name=True)
+
+        entries_with_calculations.append(
+            {
+                "entry": entry,
+                "actual_hours": calculations.actual_hours(entry),
+                "target_hours": calculations.target_hours(entry, settings),
+                "balance": calculations.balance(entry, settings),
+                "is_holiday": is_holiday_date,
+                "holiday_name": holiday_name,
+            }
+        )
+
+    # Calculate weekly summary for current week
+    today = date.today()
+    days_since_monday = today.weekday()
+    week_start = today - timedelta(days=days_since_monday)
+    week_end = week_start + timedelta(days=6)
+
+    # Get all entries for current week
+    week_entries = (
+        db.query(TimeEntry)
+        .filter(
+            TimeEntry.user_id == user_id,
+            TimeEntry.work_date >= week_start,
+            TimeEntry.work_date <= week_end,
+        )
+        .all()
+    )
+
+    service = TimeCalculationService()
+    weekly_summary = service.weekly_summary(week_entries, settings, week_start)
+
     # Build context dictionary
-    context = {"entries": entries}
+    context = {
+        "entries": entries_with_calculations,
+        "weekly_summary": weekly_summary,
+    }
 
     # Add monthly view context if month/year are specified
     if month is not None and year is not None:
@@ -82,8 +205,6 @@ async def list_time_entries(
         settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
         if not settings:
             # Create default settings if not found (MVP: user_id=1)
-            from decimal import Decimal
-
             settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
             db.add(settings)
             db.commit()
@@ -241,24 +362,8 @@ async def create_time_entry(
     """
     try:
         # Parse time strings to time objects if provided
-        from datetime import time as dt_time
-
-        parsed_start_time = None
-        parsed_end_time = None
-
-        if start_time:
-            try:
-                hours, minutes = map(int, start_time.split(":"))
-                parsed_start_time = dt_time(hours, minutes)
-            except (ValueError, AttributeError) as e:
-                raise HTTPException(status_code=422, detail="Ungültige Startzeit") from e
-
-        if end_time:
-            try:
-                hours, minutes = map(int, end_time.split(":"))
-                parsed_end_time = dt_time(hours, minutes)
-            except (ValueError, AttributeError) as e:
-                raise HTTPException(status_code=422, detail="Ungültige Endzeit") from e
+        parsed_start_time = parse_time_string(start_time, "Startzeit")
+        parsed_end_time = parse_time_string(end_time, "Endzeit")
 
         # Validate with Pydantic schema
         entry_data = TimeEntryCreate(
@@ -291,11 +396,19 @@ async def create_time_entry(
 
         db.refresh(entry)
 
+        # Get calculated values
+        entry_context = get_entry_context(entry, db, user_id)
+
         # Render row partial for inline editing
         html = render_template(
             request,
             "partials/_row_time_entry.html",
-            entry=entry,
+            entry=entry_context["entry"],
+            actual_hours=entry_context["actual_hours"],
+            target_hours=entry_context["target_hours"],
+            balance=entry_context["balance"],
+            is_holiday=entry_context["is_holiday"],
+            holiday_name=entry_context["holiday_name"],
             loop={"index": 0},  # Provide mock loop context for standalone row
         )
         response = HTMLResponse(content=html, status_code=201)
@@ -304,6 +417,40 @@ async def create_time_entry(
 
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@router.get("/last")
+async def get_last_entry_times(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> dict:
+    """Get most recent time entry's times for copy-last-entry feature.
+
+    Returns only time-related fields (start_time, end_time, break_minutes)
+    from the entry with the most recent work_date.
+
+    Args:
+        db: Database session
+        user_id: Current user ID from auth
+
+    Returns:
+        JSON dict with start_time, end_time, break_minutes (times formatted as HH:MM strings)
+
+    Raises:
+        HTTPException: 404 if no entries exist for user
+    """
+    # Get most recent entry by work_date
+    last_entry = db.query(TimeEntry).filter(TimeEntry.user_id == user_id).order_by(TimeEntry.work_date.desc()).first()
+
+    if not last_entry:
+        raise HTTPException(status_code=404, detail="Keine Einträge gefunden")
+
+    # Return only time fields, formatted for form inputs
+    return {
+        "start_time": last_entry.start_time.strftime("%H:%M") if last_entry.start_time else None,
+        "end_time": last_entry.end_time.strftime("%H:%M") if last_entry.end_time else None,
+        "break_minutes": last_entry.break_minutes,
+    }
 
 
 @router.get("/{entry_id}", response_class=HTMLResponse)
@@ -362,8 +509,18 @@ async def edit_row(
     if not entry:
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
 
+    # Check if date is a holiday
+    is_holiday_date, holiday_name = is_holiday(entry.work_date, return_name=True)
+
     # Provide mock loop object for standalone rendering
-    html = render_template(request, "partials/_row_time_entry_edit.html", entry=entry, loop={"index": 0})
+    html = render_template(
+        request,
+        "partials/_row_time_entry_edit.html",
+        entry=entry,
+        is_holiday=is_holiday_date,
+        holiday_name=holiday_name,
+        loop={"index": 0},
+    )
     return HTMLResponse(content=html, status_code=200)
 
 
@@ -393,8 +550,21 @@ async def get_row(
     if not entry:
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
 
+    # Get calculated values
+    entry_context = get_entry_context(entry, db, user_id)
+
     # Provide mock loop object for standalone rendering
-    html = render_template(request, "partials/_row_time_entry.html", entry=entry, loop={"index": 0})
+    html = render_template(
+        request,
+        "partials/_row_time_entry.html",
+        entry=entry_context["entry"],
+        actual_hours=entry_context["actual_hours"],
+        target_hours=entry_context["target_hours"],
+        balance=entry_context["balance"],
+        is_holiday=entry_context["is_holiday"],
+        holiday_name=entry_context["holiday_name"],
+        loop={"index": 0},
+    )
     return HTMLResponse(content=html, status_code=200)
 
 
@@ -470,24 +640,14 @@ async def update_time_entry(
 
     try:
         # Parse time strings if provided
-        from datetime import time as dt_time
-
         parsed_start_time = entry.start_time
         parsed_end_time = entry.end_time
 
         if start_time is not None:
-            try:
-                hours, minutes = map(int, start_time.split(":"))
-                parsed_start_time = dt_time(hours, minutes)
-            except (ValueError, AttributeError) as e:
-                raise HTTPException(status_code=422, detail="Ungültige Startzeit") from e
+            parsed_start_time = parse_time_string(start_time, "Startzeit")
 
         if end_time is not None:
-            try:
-                hours, minutes = map(int, end_time.split(":"))
-                parsed_end_time = dt_time(hours, minutes)
-            except (ValueError, AttributeError) as e:
-                raise HTTPException(status_code=422, detail="Ungültige Endzeit") from e
+            parsed_end_time = parse_time_string(end_time, "Endzeit")
 
         # Build update data
         update_dict = {}
@@ -513,11 +673,19 @@ async def update_time_entry(
         db.commit()
         db.refresh(entry)
 
+        # Get calculated values
+        entry_context = get_entry_context(entry, db, user_id)
+
         # Render updated row partial for inline editing
         html = render_template(
             request,
             "partials/_row_time_entry.html",
-            entry=entry,
+            entry=entry_context["entry"],
+            actual_hours=entry_context["actual_hours"],
+            target_hours=entry_context["target_hours"],
+            balance=entry_context["balance"],
+            is_holiday=entry_context["is_holiday"],
+            holiday_name=entry_context["holiday_name"],
             loop={"index": 0},  # Provide mock loop context for standalone row
         )
         response = HTMLResponse(content=html, status_code=200)
@@ -559,3 +727,61 @@ async def delete_time_entry(
     response = Response(status_code=204)
     response.headers["HX-Trigger"] = "timeEntryDeleted"
     return response
+
+
+@router.get("/summary/week")
+async def get_weekly_summary(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+    date_param: date | None = Query(None, alias="date"),
+) -> dict:
+    """Get weekly summary for current week or specified date's week.
+
+    Returns total_actual, total_target, and total_balance for the week (Monday-Sunday).
+
+    Args:
+        db: Database session
+        user_id: Current user ID from auth
+        date_param: Optional date to calculate week for (defaults to today)
+
+    Returns:
+        JSON dict with total_actual, total_target, total_balance (all as Decimal)
+    """
+    # Get user settings
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    if not settings:
+        settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+
+    # Determine the week to calculate
+    target_date = date_param if date_param else date.today()
+
+    # Find Monday of the week containing target_date (ISO week: Monday=0)
+    days_since_monday = target_date.weekday()
+    week_start = target_date - timedelta(days=days_since_monday)
+
+    # Calculate week end (Sunday)
+    week_end = week_start + timedelta(days=6)
+
+    # Get all entries for this week
+    entries = (
+        db.query(TimeEntry)
+        .filter(
+            TimeEntry.user_id == user_id,
+            TimeEntry.work_date >= week_start,
+            TimeEntry.work_date <= week_end,
+        )
+        .all()
+    )
+
+    # Calculate weekly summary
+    service = TimeCalculationService()
+    weekly_summary = service.weekly_summary(entries, settings, week_start)
+
+    return {
+        "total_actual": float(weekly_summary.total_actual),
+        "total_target": float(weekly_summary.total_target),
+        "total_balance": float(weekly_summary.total_balance),
+    }

@@ -1,5 +1,22 @@
 {% from "macros/_icons.html" import icon %}
 
+{# Weekly summary - always visible #}
+{% if weekly_summary %}
+<div class="mb-6">
+    <div class="flex items-center justify-center">
+        <div class="inline-flex items-center gap-4 px-6 py-3 bg-base-100 shadow-lg rounded-full border border-base-300">
+            <span class="text-sm font-medium text-base-content/70">Diese Woche:</span>
+            <span class="text-lg font-semibold text-primary">{{ weekly_summary.total_actual|format_hours }}</span>
+            <span class="text-sm text-base-content/50">/</span>
+            <span class="text-lg font-normal text-base-content">{{ weekly_summary.total_target|format_hours }}</span>
+            <span class="text-sm font-medium {% if weekly_summary.total_balance >= 0 %}text-success{% else %}text-error{% endif %}">
+                ({% if weekly_summary.total_balance > 0 %}+{% endif %}{{ weekly_summary.total_balance|format_balance }}h)
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {# Monthly navigation if month context is available #}
 {% if month and year %}
 <div class="flex items-center gap-3 mb-6">
@@ -72,19 +89,22 @@
                     <th class="font-bold text-sm">Arbeitsstunden Soll</th>
                     <th class="font-bold text-sm">+/-</th>
                     <th class="font-bold text-sm">Abwesenheit / Bemerkung</th>
-                    <th class="font-bold text-sm text-center">Zeitausgleich</th>
-                    <th class="font-bold text-sm text-center">Urlaub?</th>
+                    <th class="font-bold text-sm text-center">Abwesenheit</th>
                     <th class="font-bold text-sm w-12"></th>
                 </tr>
             </thead>
             <tbody>
                 {% if entries %}
-                    {% for entry in entries %}
+                    {% for entry_data in entries %}
+                    {% set entry = entry_data.entry %}
+                    {% set actual_hours = entry_data.actual_hours %}
+                    {% set target_hours = entry_data.target_hours %}
+                    {% set balance = entry_data.balance %}
                     {% include "partials/_row_time_entry.html" %}
                     {% endfor %}
                 {% else %}
                 {# Empty state row when no entries #}
-                <tr>
+                <tr id="empty-state-row">
                     <td colspan="11" class="text-center py-12">
                         <div class="text-base-content/50 mb-4">
                             {{ icon("inbox", class="w-16 h-16 mx-auto") }}
@@ -129,4 +149,42 @@
             {% endif %}
         </table>
     </div>
+</div>
+
+{# Keyboard shortcuts legend #}
+<div class="mt-4 text-sm text-base-content/60">
+    <details class="collapse collapse-arrow bg-base-200 rounded-lg">
+        <summary class="collapse-title text-sm font-medium">
+            {{ icon("help-circle", class="w-4 h-4 inline-block mr-2") }}
+            Tastenkürzel
+        </summary>
+        <div class="collapse-content">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+                <div class="flex items-center gap-2">
+                    <kbd class="kbd kbd-sm">N</kbd>
+                    <span>Neuer Eintrag</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <kbd class="kbd kbd-sm">T</kbd>
+                    <span>Heute</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <kbd class="kbd kbd-sm">←</kbd>
+                    <span>Vorheriger Monat</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <kbd class="kbd kbd-sm">→</kbd>
+                    <span>Nächster Monat</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <kbd class="kbd kbd-sm">Enter</kbd>
+                    <span>Speichern (in Bearbeitungszeile)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <kbd class="kbd kbd-sm">Esc</kbd>
+                    <span>Abbrechen (in Bearbeitungszeile)</span>
+                </div>
+            </div>
+        </div>
+    </details>
 </div>

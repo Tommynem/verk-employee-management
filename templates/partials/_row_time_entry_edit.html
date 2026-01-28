@@ -15,6 +15,7 @@
 {% set balance = actual_hours - target_hours %}
 
 <tr id="{{ row_id }}"
+    data-edit-row
     class="{% if not is_new and loop is defined and loop.index is even %}bg-base-200{% endif %} border-b border-base-300 bg-warning/5">
 
     {# 1. Tag (Date) - Read-only for existing, input for new #}
@@ -27,6 +28,9 @@
                required />
         {% else %}
         {{ entry.work_date.strftime('%d.%m.%y') }}
+        {% if is_holiday %}
+        <span class="ml-2 badge badge-warning badge-sm" title="{{ holiday_name }}">{{ icon("party-popper", class="w-3 h-3") }}</span>
+        {% endif %}
         <input type="hidden" name="work_date" value="{{ entry.work_date.strftime('%Y-%m-%d') }}" />
         {% endif %}
     </td>
@@ -39,7 +43,8 @@
                pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
                placeholder="08:00"
                class="input input-sm input-bordered w-20"
-               title="Format: HH:MM (z.B. 08:00)" />
+               title="Format: HH:MM (z.B. 08:00)"
+               tabindex="1" />
     </td>
 
     {# 3. Ende (End Time) #}
@@ -50,7 +55,8 @@
                pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
                placeholder="16:00"
                class="input input-sm input-bordered w-20"
-               title="Format: HH:MM (z.B. 16:00)" />
+               title="Format: HH:MM (z.B. 16:00)"
+               tabindex="2" />
     </td>
 
     {# 4. Pausen (Break in minutes) #}
@@ -62,7 +68,8 @@
                max="480"
                step="5"
                class="input input-sm input-bordered w-16"
-               title="Pausenzeit in Minuten" />
+               title="Pausenzeit in Minuten"
+               tabindex="3" />
     </td>
 
     {# 5. Arbeitsstunden Real (Display-only, calculated) #}
@@ -89,7 +96,8 @@
                value="{{ entry.notes or '' if entry else '' }}"
                placeholder="Bemerkung"
                maxlength="500"
-               class="input input-sm input-bordered w-full" />
+               class="input input-sm input-bordered w-full"
+               tabindex="4" />
     </td>
 
     {# 9. Zeitausgleich (Flex Time checkbox) #}
@@ -97,7 +105,8 @@
         <input type="checkbox"
                name="flex_time"
                class="checkbox checkbox-sm"
-               {% if entry and entry.absence_type.value == 'flex_time' %}checked{% endif %} />
+               {% if entry and entry.absence_type.value == 'flex_time' %}checked{% endif %}
+               tabindex="6" />
     </td>
 
     {# 10. Urlaub? (Vacation checkbox) #}
@@ -105,12 +114,23 @@
         <input type="checkbox"
                name="vacation"
                class="checkbox checkbox-sm"
-               {% if entry and entry.absence_type.value == 'vacation' %}checked{% endif %} />
+               {% if entry and entry.absence_type.value == 'vacation' %}checked{% endif %}
+               tabindex="7" />
     </td>
 
-    {# 11. Actions (Save and Cancel buttons) #}
+    {# 11. Actions (Copy Last, Save and Cancel buttons) #}
     <td class="py-3 px-4 w-12">
         <div class="flex gap-1 items-center justify-end">
+            {# Copy Last button #}
+            <button type="button"
+                    class="btn btn-secondary btn-xs"
+                    onclick="copyLastEntry(this)"
+                    title="Letzte kopieren"
+                    aria-label="Letzte kopieren"
+                    tabindex="8">
+                {{ icon("clipboard", class="w-3 h-3") }}
+            </button>
+
             {# Save button #}
             {% if is_new %}
             <button type="button"
@@ -119,7 +139,9 @@
                     hx-include="closest tr"
                     hx-target="closest tr"
                     hx-swap="outerHTML"
-                    title="Speichern">
+                    title="Speichern"
+                    aria-label="Speichern"
+                    tabindex="5">
                 {{ icon("check", class="w-3 h-3") }}
             </button>
             {% else %}
@@ -129,7 +151,9 @@
                     hx-include="closest tr"
                     hx-target="closest tr"
                     hx-swap="outerHTML"
-                    title="Speichern">
+                    title="Speichern"
+                    aria-label="Speichern"
+                    tabindex="5">
                 {{ icon("check", class="w-3 h-3") }}
             </button>
             {% endif %}
@@ -138,8 +162,10 @@
             {% if is_new %}
             <button type="button"
                     class="btn btn-ghost btn-xs"
-                    onclick="this.closest('tr').remove()"
-                    title="Abbrechen">
+                    onclick="cancelNewEntry(this)"
+                    title="Abbrechen"
+                    aria-label="Abbrechen"
+                    tabindex="9">
                 {{ icon("x", class="w-3 h-3") }}
             </button>
             {% else %}
@@ -148,7 +174,9 @@
                     hx-get="/time-entries/{{ entry.id }}/row"
                     hx-target="closest tr"
                     hx-swap="outerHTML"
-                    title="Abbrechen">
+                    title="Abbrechen"
+                    aria-label="Abbrechen"
+                    tabindex="9">
                 {{ icon("x", class="w-3 h-3") }}
             </button>
             {% endif %}
@@ -161,7 +189,9 @@
                     hx-confirm="Eintrag wirklich löschen?"
                     hx-target="closest tr"
                     hx-swap="delete"
-                    title="Löschen">
+                    title="Löschen"
+                    aria-label="Löschen"
+                    tabindex="10">
                 {{ icon("trash-2", class="w-3 h-3") }}
             </button>
             {% endif %}
@@ -169,28 +199,47 @@
     </td>
 </tr>
 
-{# Keyboard support with vanilla JavaScript #}
+{# Hide empty state when this edit row is shown for new entry #}
+{% if is_new %}
+<tr id="empty-state-row" hx-swap-oob="outerHTML:#empty-state-row" style="display: none;">
+</tr>
+{% endif %}
+
+{# JavaScript for cancel button behavior on new entries #}
+{% if is_new %}
 <script>
-(function() {
-    const row = document.getElementById('{{ row_id }}');
-    if (!row) return;
+window.cancelNewEntry = function(button) {
+    const editRow = button.closest('tr');
+    const tbody = editRow.parentElement;
 
-    // Handle Enter key to submit
-    row.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            const saveBtn = row.querySelector('.btn-primary');
-            if (saveBtn) saveBtn.click();
-        }
+    // Remove the edit row
+    editRow.remove();
+
+    // Check if table only has the "add-row-trigger" left (no actual entries)
+    const dataRows = Array.from(tbody.querySelectorAll('tr')).filter(row => {
+        return row.id !== 'add-row-trigger' && row.id !== 'empty-state-row' && !row.hasAttribute('data-edit-row');
     });
 
-    // Handle Escape key to cancel
-    row.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            const cancelBtn = row.querySelector('.btn-ghost');
-            if (cancelBtn) cancelBtn.click();
+    // If no data rows exist, restore the empty state
+    if (dataRows.length === 0) {
+        const emptyStateRow = document.createElement('tr');
+        emptyStateRow.id = 'empty-state-row';
+        emptyStateRow.innerHTML = `
+            <td colspan="11" class="text-center py-12">
+                <div class="text-base-content/50 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-16 h-16 mx-auto"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                </div>
+                <p class="text-lg font-medium text-base-content/70">Keine Zeiteinträge gefunden</p>
+                <p class="text-sm text-base-content/50 mt-2">Erstellen Sie einen neuen Eintrag, um zu beginnen.</p>
+            </td>
+        `;
+
+        // Insert before the add-row-trigger
+        const addRowTrigger = tbody.querySelector('#add-row-trigger');
+        if (addRowTrigger) {
+            tbody.insertBefore(emptyStateRow, addRowTrigger);
         }
-    });
-})();
+    }
+};
 </script>
+{% endif %}

@@ -1,15 +1,5 @@
 {% from "macros/_icons.html" import icon %}
 
-{# Calculate actual_hours, target_hours, balance #}
-{% if entry.start_time and entry.end_time %}
-    {% set actual_minutes = (entry.end_time.hour * 60 + entry.end_time.minute) - (entry.start_time.hour * 60 + entry.start_time.minute) - entry.break_minutes %}
-    {% set actual_hours = (actual_minutes / 60)|round(2) %}
-{% else %}
-    {% set actual_hours = 0 %}
-{% endif %}
-{% set target_hours = 8.0 %}
-{% set balance = actual_hours - target_hours %}
-
 <tr id="time-entry-row-{{ entry.id }}"
     class="{% if loop is defined and loop.index is even %}bg-base-200{% endif %} border-b border-base-300 cursor-pointer hover:bg-base-300/50 transition-colors"
     hx-get="/time-entries/{{ entry.id }}/edit-row"
@@ -17,7 +7,12 @@
     hx-swap="outerHTML"
     hx-trigger="click">
     {# 1. Tag (Date) #}
-    <td class="py-3 px-4 text-sm">{{ entry.work_date.strftime('%d.%m.%y') }}</td>
+    <td class="py-3 px-4 text-sm">
+        {{ entry.work_date.strftime('%d.%m.%y') }}
+        {% if is_holiday %}
+        <span class="ml-2 badge badge-warning badge-sm" title="{{ holiday_name }}">{{ icon("party-popper", class="w-3 h-3") }}</span>
+        {% endif %}
+    </td>
 
     {# 2. Ankunft (Start Time) #}
     <td class="py-3 px-4 text-sm">{{ entry.start_time.strftime('%H:%M') if entry.start_time else '' }}</td>
@@ -42,24 +37,59 @@
     {# 8. Abwesenheit / Bemerkung (Notes) #}
     <td class="py-3 px-4 text-sm text-base-content/70">{{ entry.notes or '' }}</td>
 
-    {# 9. Zeitausgleich (Flex Time) #}
+    {# 9. Quick Absence Buttons #}
     <td class="py-3 px-4 text-center" onclick="event.stopPropagation()">
-        <input type="checkbox" class="checkbox checkbox-sm"
-               {% if entry.absence_type.value == 'flex_time' %}checked{% endif %}
-               hx-patch="/time-entries/{{ entry.id }}"
-               hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}"}'
-               hx-swap="none" />
+        <div class="flex gap-1 justify-center">
+            {# Urlaub (Vacation) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'vacation' %}!bg-primary/30 !border-2 !border-primary !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Urlaub"
+                    title="Urlaub"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("umbrella", class="w-4 h-4") }}
+            </button>
+
+            {# Krank (Sick) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'sick' %}!bg-error/30 !border-2 !border-error !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Krank"
+                    title="Krank"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'sick' %}none{% else %}sick{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("thermometer", class="w-4 h-4") }}
+            </button>
+
+            {# Feiertag (Holiday) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'holiday' %}!bg-warning/30 !border-2 !border-warning !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Feiertag"
+                    title="Feiertag"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'holiday' %}none{% else %}holiday{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("party-popper", class="w-4 h-4") }}
+            </button>
+
+            {# Gleitzeit (Flex Time) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'flex_time' %}!bg-info/30 !border-2 !border-info !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Gleitzeit"
+                    title="Gleitzeit"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("clock-arrow-down", class="w-4 h-4") }}
+            </button>
+        </div>
     </td>
 
-    {# 10. Urlaub? (Vacation) #}
-    <td class="py-3 px-4 text-center" onclick="event.stopPropagation()">
-        <input type="checkbox" class="checkbox checkbox-sm"
-               {% if entry.absence_type.value == 'vacation' %}checked{% endif %}
-               hx-patch="/time-entries/{{ entry.id }}"
-               hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}"}'
-               hx-swap="none" />
-    </td>
-
-    {# 11. Actions (Empty for view mode) #}
+    {# 10. Actions (Empty for view mode) #}
     <td class="py-3 px-4 w-12"></td>
 </tr>
