@@ -102,26 +102,66 @@
                tabindex="4" />
     </td>
 
-    {# 9. Zeitausgleich (Flex Time checkbox) #}
+    {# 9. Abwesenheit (Absence buttons - same as view mode) #}
     <td class="py-3 px-4 text-center">
-        <input type="checkbox"
-               name="flex_time"
-               class="checkbox checkbox-sm"
-               {% if entry and entry.absence_type.value == 'flex_time' %}checked{% endif %}
-               tabindex="6" />
+        <div class="flex gap-1 justify-center">
+            {# For new entries, show disabled placeholder buttons #}
+            {% if is_new %}
+            <span class="text-xs text-base-content/40">Nach Speichern</span>
+            {% else %}
+            {# Urlaub (Vacation) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'vacation' %}!bg-primary/30 !border-2 !border-primary !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Urlaub"
+                    title="Urlaub"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("tree-palm", class="w-4 h-4") }}
+            </button>
+
+            {# Krank (Sick) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'sick' %}!bg-error/30 !border-2 !border-error !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Krank"
+                    title="Krank"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'sick' %}none{% else %}sick{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("thermometer", class="w-4 h-4") }}
+            </button>
+
+            {# Feiertag (Holiday) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'holiday' %}!bg-warning/30 !border-2 !border-warning !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Feiertag"
+                    title="Feiertag"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'holiday' %}none{% else %}holiday{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("party-popper", class="w-4 h-4") }}
+            </button>
+
+            {# Gleitzeit (Flex Time) #}
+            <button type="button"
+                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'flex_time' %}!bg-info/30 !border-2 !border-info !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    aria-label="Gleitzeit"
+                    title="Gleitzeit"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}"}'
+                    hx-target="closest tr"
+                    hx-swap="outerHTML">
+                {{ icon("clock-arrow-down", class="w-4 h-4") }}
+            </button>
+            {% endif %}
+        </div>
     </td>
 
-    {# 10. Urlaub? (Vacation checkbox) #}
-    <td class="py-3 px-4 text-center">
-        <input type="checkbox"
-               name="vacation"
-               class="checkbox checkbox-sm"
-               {% if entry and entry.absence_type.value == 'vacation' %}checked{% endif %}
-               tabindex="7" />
-    </td>
-
-    {# 11. Actions (Copy Last, Save and Cancel buttons) #}
-    <td class="py-3 px-4 w-12">
+    {# 10. Actions #}
+    <td class="py-3 px-4 w-32">
         <div class="flex gap-1 items-center justify-end">
             {# Copy Last button #}
             <button type="button"
@@ -187,10 +227,16 @@
             {% if not is_new %}
             <button type="button"
                     class="btn btn-error btn-xs"
-                    hx-delete="/time-entries/{{ entry.id }}"
-                    hx-confirm="Eintrag wirklich löschen?"
-                    hx-target="closest tr"
-                    hx-swap="delete"
+                    onclick="showDeleteModal({
+                        title: 'Eintrag löschen?',
+                        message: 'Diese Aktion kann nicht rückgängig gemacht werden.',
+                        onConfirm: () => {
+                            htmx.ajax('DELETE', '/time-entries/{{ entry.id }}', {
+                                target: 'closest tr',
+                                swap: 'delete'
+                            });
+                        }
+                    }); return false;"
                     title="Löschen"
                     aria-label="Löschen"
                     tabindex="10">
@@ -227,7 +273,7 @@ window.cancelNewEntry = function(button) {
         const emptyStateRow = document.createElement('tr');
         emptyStateRow.id = 'empty-state-row';
         emptyStateRow.innerHTML = `
-            <td colspan="11" class="text-center py-12">
+            <td colspan="10" class="text-center py-12">
                 <div class="text-base-content/50 mb-4">
                     <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-16 h-16 mx-auto"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
                 </div>

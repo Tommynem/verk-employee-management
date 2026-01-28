@@ -250,6 +250,13 @@ async def list_time_entries(
         "balance_trend": balance_trend,
     }
 
+    # Calculate month status (draft vs submitted)
+    if entries:
+        has_draft_entries = any(entry.status == RecordStatus.DRAFT for entry in entries)
+        context["has_draft_entries"] = has_draft_entries
+    else:
+        context["has_draft_entries"] = None  # No entries, no status badge
+
     # Add monthly view context if month/year are specified
     if month is not None and year is not None:
         # Get or create UserSettings
@@ -506,6 +513,38 @@ async def get_last_entry_times(
         "start_time": last_entry.start_time.strftime("%H:%M") if last_entry.start_time else None,
         "end_time": last_entry.end_time.strftime("%H:%M") if last_entry.end_time else None,
         "break_minutes": last_entry.break_minutes,
+    }
+
+
+@router.get("/{entry_id}/json")
+async def get_time_entry_json(
+    entry_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> dict:
+    """Get time entry data as JSON for copy functionality.
+
+    Args:
+        entry_id: Time entry ID
+        db: Database session
+        user_id: Current user ID from auth
+
+    Returns:
+        JSON dict with entry times and notes
+
+    Raises:
+        HTTPException: 404 if entry not found
+    """
+    entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.user_id == user_id).first()
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+
+    return {
+        "start_time": entry.start_time.strftime("%H:%M") if entry.start_time else None,
+        "end_time": entry.end_time.strftime("%H:%M") if entry.end_time else None,
+        "break_minutes": entry.break_minutes,
+        "notes": entry.notes,
     }
 
 

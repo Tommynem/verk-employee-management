@@ -325,6 +325,56 @@
     };
 
     /**
+     * Copy an existing entry's times to a new row
+     * Creates a new edit row and populates it with the source entry's data
+     *
+     * @param {number} entryId - The ID of the entry to copy from
+     */
+    window.copyEntryToNew = async function(entryId) {
+        try {
+            // Fetch the source entry's data as JSON
+            const response = await fetch(`/time-entries/${entryId}/json`);
+            if (!response.ok) {
+                alert('Fehler beim Laden der Eintragsdaten');
+                return;
+            }
+            const data = await response.json();
+
+            // Trigger new row creation
+            const addButton = document.querySelector('button[hx-get*="/time-entries/new-row"]');
+            if (!addButton) {
+                alert('Neuen Eintrag-Button nicht gefunden');
+                return;
+            }
+            addButton.click();
+
+            // Wait for the new row to appear and populate it
+            setTimeout(() => {
+                const newRow = document.querySelector('tr[data-edit-row]#time-entry-row-new');
+                if (!newRow) return;
+
+                const startInput = newRow.querySelector('[name="start_time"]');
+                const endInput = newRow.querySelector('[name="end_time"]');
+                const breakInput = newRow.querySelector('[name="break_minutes"]');
+                const notesInput = newRow.querySelector('[name="notes"]');
+
+                if (startInput && data.start_time) startInput.value = data.start_time;
+                if (endInput && data.end_time) endInput.value = data.end_time;
+                if (breakInput && data.break_minutes != null) breakInput.value = data.break_minutes;
+                if (notesInput && data.notes) notesInput.value = data.notes;
+
+                // Focus the date field
+                const dateInput = newRow.querySelector('[name="work_date"]');
+                if (dateInput) dateInput.focus();
+            }, 150);
+
+        } catch (error) {
+            console.error('Error copying entry:', error);
+            alert('Fehler beim Kopieren des Eintrags');
+        }
+    };
+
+    /**
      * Auto-refresh time entries view when entries are created, updated, or deleted.
      * This ensures summary cards (Monatssaldo, Sollstunden, Aktuelles Zeitkonto)
      * and weekly summaries update automatically without manual page refresh.
