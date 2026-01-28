@@ -12,6 +12,27 @@
             <span class="text-sm font-medium {% if weekly_summary.total_balance >= 0 %}text-success{% else %}text-error{% endif %}">
                 ({% if weekly_summary.total_balance > 0 %}+{% endif %}{{ weekly_summary.total_balance|format_balance }}h)
             </span>
+
+            {# Balance trend sparkline #}
+            {% if balance_trend and balance_trend|length > 0 %}
+            <div class="flex items-center gap-2 ml-2 pl-4 border-l border-base-300">
+                <span class="text-xs text-base-content/50">Trend:</span>
+                <svg class="w-24 h-8" viewBox="0 0 100 30" preserveAspectRatio="none">
+                    {% set values = balance_trend|map(attribute='balance')|list %}
+                    {% set min_val = values|min %}
+                    {% set max_val = values|max %}
+                    {% set range_val = max_val - min_val if max_val != min_val else 1 %}
+                    <polyline
+                        fill="none"
+                        stroke="{% if values[-1] >= 0 %}#22c55e{% else %}#ef4444{% endif %}"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        points="{% for val in values %}{{ loop.index0 * (100 / (values|length - 1)) }},{{ 28 - ((val - min_val) / range_val * 26) }}{% if not loop.last %} {% endif %}{% endfor %}"
+                    />
+                </svg>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -39,6 +60,21 @@
             aria-label="Nächster Monat">
         {{ icon("chevron-right", class="w-5 h-5") }}
     </button>
+
+    {# Export/Import buttons #}
+    <div class="ml-auto flex items-center gap-2">
+        <a href="/time-entries/export?month={{ month }}&year={{ year }}"
+           class="btn btn-sm btn-outline gap-2"
+           download>
+            {{ icon("download", class="w-4 h-4") }}
+            CSV Export
+        </a>
+        <button class="btn btn-sm btn-outline gap-2"
+                onclick="document.getElementById('import-modal').showModal()">
+            {{ icon("upload", class="w-4 h-4") }}
+            CSV Import
+        </button>
+    </div>
 </div>
 
 {# Summary cards if summary is available #}
@@ -62,14 +98,22 @@
         </div>
     </div>
 
-    {# Card 3: Aktuelles Zeitkonto (Balance) #}
+    {# Card 3: Balance (label changes based on current vs past month) #}
     <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg">
         <div class="card-body p-6">
+            {% if is_current_month %}
             <p class="text-sm text-base-content/70">Aktuelles Zeitkonto</p>
+            {% else %}
+            <p class="text-sm text-base-content/70">Endsaldo</p>
+            {% endif %}
             <p class="text-3xl font-normal {% if summary.carryover_out >= 0 %}text-success{% else %}text-error{% endif %}">
                 {{ summary.carryover_out|format_balance }}h
             </p>
+            {% if is_current_month %}
             <p class="text-xs text-base-content/50">Überstunden</p>
+            {% else %}
+            <p class="text-xs text-base-content/50">{{ month_name }} {{ year }}</p>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -100,6 +144,8 @@
                     {% set actual_hours = entry_data.actual_hours %}
                     {% set target_hours = entry_data.target_hours %}
                     {% set balance = entry_data.balance %}
+                    {% set is_holiday = entry_data.is_holiday %}
+                    {% set holiday_name = entry_data.holiday_name %}
                     {% include "partials/_row_time_entry.html" %}
                     {% endfor %}
                 {% else %}
@@ -117,6 +163,8 @@
 
                 {# Add New Entry row - always show when next_date is available #}
                 {% if next_date %}
+                {% set weekday_map = {'0': 'So', '1': 'Mo', '2': 'Di', '3': 'Mi', '4': 'Do', '5': 'Fr', '6': 'Sa'} %}
+                {% set next_weekday = weekday_map[next_date.strftime('%w')] %}
                 <tr id="add-row-trigger" class="bg-warning/10 border-b border-base-300">
                     <td colspan="11" class="py-4">
                         <button class="flex items-center justify-center gap-2 w-full text-primary font-medium"
@@ -124,7 +172,7 @@
                                 hx-target="closest tr"
                                 hx-swap="beforebegin">
                             {{ icon("plus-circle", class="w-5 h-5") }}
-                            <span>{% if entries %}Nächsten Tag hinzufügen ({{ next_date.strftime('%d.%m.%y') }}){% else %}Ersten Eintrag hinzufügen ({{ next_date.strftime('%d.%m.%y') }}){% endif %}</span>
+                            <span>{% if entries %}Nächsten Tag hinzufügen ({{ next_date.strftime('%d.%m.%y') }} {{ next_weekday }}){% else %}Ersten Eintrag hinzufügen ({{ next_date.strftime('%d.%m.%y') }} {{ next_weekday }}){% endif %}</span>
                         </button>
                     </td>
                 </tr>
@@ -141,7 +189,7 @@
                     <td colspan="5"></td>
                 </tr>
                 <tr class="bg-success/20">
-                    <td colspan="4" class="py-3 px-4 font-bold text-sm">Aktuelles Zeitkonto:</td>
+                    <td colspan="4" class="py-3 px-4 font-bold text-sm">{% if is_current_month %}Aktuelles Zeitkonto:{% else %}Endsaldo {{ month_name }} {{ year }}:{% endif %}</td>
                     <td class="py-3 px-4 font-bold text-sm text-success">{{ summary.carryover_out|format_balance }}</td>
                     <td colspan="6"></td>
                 </tr>
@@ -188,3 +236,63 @@
         </div>
     </details>
 </div>
+
+{# Import Modal #}
+<dialog id="import-modal" class="modal">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">CSV Import</h3>
+        <form id="import-form"
+              hx-post="/time-entries/import?user_id=1"
+              hx-encoding="multipart/form-data"
+              hx-target="#import-result"
+              hx-swap="innerHTML">
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">CSV-Datei auswählen</span>
+                </label>
+                <input type="file" name="file" accept=".csv"
+                       class="file-input file-input-bordered w-full" required />
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label cursor-pointer justify-start gap-4">
+                    <input type="checkbox" name="skip_duplicates" value="true" class="checkbox" />
+                    <span class="label-text">Vorhandene Einträge überspringen</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label cursor-pointer justify-start gap-4">
+                    <input type="checkbox" name="dry_run" value="true" class="checkbox" />
+                    <span class="label-text">Nur prüfen (nicht speichern)</span>
+                </label>
+            </div>
+
+            <div id="import-result" class="mb-4"></div>
+
+            <div class="modal-action">
+                <button type="button" class="btn" onclick="document.getElementById('import-modal').close()">
+                    Abbrechen
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    Importieren
+                </button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<script>
+    // Refresh page after successful import
+    document.addEventListener('htmx:afterSettle', function(event) {
+        if (event.detail.successful && event.detail.xhr.getResponseHeader('HX-Trigger') === 'timeEntriesImported') {
+            // Close modal
+            document.getElementById('import-modal').close();
+            // Reload the browser view to show imported entries
+            window.location.reload();
+        }
+    });
+</script>

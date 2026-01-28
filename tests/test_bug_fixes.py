@@ -174,8 +174,10 @@ class TestBug3DateFieldCorruption:
         if date_value:
             # Should match YYYY-MM-DD format
             import re
-            assert re.match(r'^\d{4}-\d{2}-\d{2}$', date_value), \
-                f"Expected valid date format YYYY-MM-DD, got '{date_value}'"
+
+            assert re.match(
+                r"^\d{4}-\d{2}-\d{2}$", date_value
+            ), f"Expected valid date format YYYY-MM-DD, got '{date_value}'"
             # Should NOT contain "ID-" or other corruption
             assert "ID-" not in date_value, f"Date value corrupted with row ID: '{date_value}'"
 
@@ -207,10 +209,10 @@ class TestBug3DateFieldCorruption:
             date_value = date_input.input_value()
 
             # Verify no corruption
-            assert "ID-" not in str(date_value), \
-                f"Iteration {i+1}: Date value corrupted: '{date_value}'"
-            assert "time-entry-row-" not in str(date_value), \
-                f"Iteration {i+1}: Date value contains row ID: '{date_value}'"
+            assert "ID-" not in str(date_value), f"Iteration {i+1}: Date value corrupted: '{date_value}'"
+            assert "time-entry-row-" not in str(
+                date_value
+            ), f"Iteration {i+1}: Date value contains row ID: '{date_value}'"
 
             # Cancel to clean up
             cancel_button = edit_row.locator('button[title="Abbrechen"]')
@@ -242,7 +244,7 @@ class TestBug4MissingVisualFeedbackAbsenceButtons:
         entry_row = page.locator("tr[id^='time-entry-row-']:not([data-edit-row])").first
 
         if entry_row.count() > 0:
-            # Find vacation button (umbrella icon)
+            # Find vacation button (tree-palm icon)
             vacation_button = entry_row.locator('button[title="Urlaub"]')
 
             # Get initial class list
@@ -262,12 +264,12 @@ class TestBug4MissingVisualFeedbackAbsenceButtons:
 
             # Verify button has active state styling
             # Should have "bg-primary/20" or "border-primary"
-            assert "bg-primary" in updated_classes or "border-primary" in updated_classes, \
-                f"Expected active state styling, got classes: {updated_classes}"
+            assert (
+                "bg-primary" in updated_classes or "border-primary" in updated_classes
+            ), f"Expected active state styling, got classes: {updated_classes}"
 
             # Verify button looks different from initial state
-            assert initial_classes != updated_classes, \
-                "Button classes should change after activation"
+            assert initial_classes != updated_classes, "Button classes should change after activation"
 
     def test_sick_button_shows_active_state_after_click(self, page: Page):
         """Test that sick button shows active styling after click.
@@ -299,8 +301,9 @@ class TestBug4MissingVisualFeedbackAbsenceButtons:
             classes = sick_button.get_attribute("class")
 
             # Verify active state
-            assert "bg-error" in classes or "border-error" in classes, \
-                f"Expected sick button active styling, got: {classes}"
+            assert (
+                "bg-error" in classes or "border-error" in classes
+            ), f"Expected sick button active styling, got: {classes}"
 
 
 @pytest.mark.playwright

@@ -82,11 +82,11 @@ class TestTimeInputFormatting:
     def test_format_invalid_input(self):
         """Invalid input should return empty string (clears the field)."""
         test_cases = [
-            "abc",      # Non-numeric
-            "25",       # Invalid hour > 23
-            "25:00",    # Invalid hour in colon format
-            "12:60",    # Invalid minute >= 60
-            "123456",   # Too long
+            "abc",  # Non-numeric
+            "25",  # Invalid hour > 23
+            "25:00",  # Invalid hour in colon format
+            "12:60",  # Invalid minute >= 60
+            "123456",  # Too long
         ]
         for input_val in test_cases:
             result = self._format_time_input(input_val)

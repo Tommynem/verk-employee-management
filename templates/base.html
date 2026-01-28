@@ -1,3 +1,4 @@
+{% from "macros/_icons.html" import icon %}
 <!DOCTYPE html>
 <html lang="de" data-theme="verk">
 <head>
@@ -15,21 +16,35 @@
     <script src="/static/vendor/htmx/htmx.min.js"></script>
     {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen bg-base-200" style="font-family: 'Open Sans', ui-sans-serif, system-ui, sans-serif;">
-    <!-- Navigation -->
-    <nav class="navbar bg-gradient-to-r from-brand-dark-start to-brand-dark-end text-white shadow-lg">
-        <div class="flex-1 flex items-center gap-4">
-            <a class="btn btn-ghost normal-case" href="/time-entries">
-                <img src="/static/logo.png" alt="VERK Logo" class="h-10 w-auto">
-            </a>
+<body class="h-screen flex flex-col antialiased overflow-hidden font-sans" style="font-family: 'Open Sans', ui-sans-serif, system-ui, sans-serif;">
+    <!-- Header with brand gradient -->
+    <header class="bg-gradient-to-r from-brand-dark-start to-brand-dark-end shadow-lg sticky top-0 z-50">
+        <div class="navbar px-4">
+            <div class="flex-1 flex items-center gap-4">
+                <a href="/time-entries" class="btn btn-ghost text-xl normal-case text-white hover:bg-white/10">
+                    <img src="/static/logo.png" alt="Verk" class="h-8 mr-2">
+                    <span class="font-semibold">Zeiterfassung</span>
+                </a>
+            </div>
+            <div class="flex-none">
+                <div class="flex gap-3">
+                    {# Zeiterfassung link #}
+                    <a href="/time-entries"
+                       class="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-200 text-white">
+                        {{ icon("clock", size=20) }}
+                        <span class="text-sm font-medium">Zeiterfassung</span>
+                    </a>
+
+                    {# Settings link #}
+                    <a href="/settings"
+                       class="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-200 text-white">
+                        {{ icon("settings", size=20) }}
+                        <span class="text-sm font-medium">Einstellungen</span>
+                    </a>
+                </div>
+            </div>
         </div>
-        <div class="flex-none">
-            <ul class="menu menu-horizontal px-1">
-                <li><a href="/time-entries">Zeiterfassung</a></li>
-                <li><a href="/settings">Einstellungen</a></li>
-            </ul>
-        </div>
-    </nav>
+    </header>
 
     <!-- Main Content -->
     <main class="container mx-auto p-4">

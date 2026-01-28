@@ -104,6 +104,53 @@ def get_entry_context(entry: TimeEntry, db: Session, user_id: int) -> dict:
     }
 
 
+def get_balance_trend(db: Session, user_id: int, settings: UserSettings, weeks: int = 8) -> list[dict]:
+    """Get weekly balance data for sparkline trend visualization.
+
+    Args:
+        db: Database session
+        user_id: User ID to fetch entries for
+        settings: UserSettings instance for calculations
+        weeks: Number of weeks to include in trend (default: 8)
+
+    Returns:
+        List of dicts with week number and balance for each week
+    """
+    today = date.today()
+    trend_data = []
+
+    # Go back N weeks, iterate from oldest to newest
+    for i in range(weeks - 1, -1, -1):
+        # Calculate week boundaries
+        days_offset = today.weekday() + (i * 7)
+        week_end = today - timedelta(days=days_offset)
+        week_start = week_end - timedelta(days=6)
+
+        # Get entries for that week
+        week_entries = (
+            db.query(TimeEntry)
+            .filter(
+                TimeEntry.user_id == user_id,
+                TimeEntry.work_date >= week_start,
+                TimeEntry.work_date <= week_end,
+            )
+            .all()
+        )
+
+        # Calculate balance for this week
+        service = TimeCalculationService()
+        weekly = service.weekly_summary(week_entries, settings, week_start)
+
+        trend_data.append(
+            {
+                "week": week_start.isocalendar()[1],
+                "balance": float(weekly.total_balance),
+            }
+        )
+
+    return trend_data
+
+
 @router.get("", response_class=HTMLResponse)
 async def list_time_entries(
     request: Request,
@@ -145,8 +192,8 @@ async def list_time_entries(
             )
         )
 
-    # Order by date descending
-    entries = query.order_by(TimeEntry.work_date.desc()).all()
+    # Order by date ascending (chronological order for timesheet)
+    entries = query.order_by(TimeEntry.work_date.asc()).all()
 
     # Get user settings for calculations
     settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
@@ -193,10 +240,14 @@ async def list_time_entries(
     service = TimeCalculationService()
     weekly_summary = service.weekly_summary(week_entries, settings, week_start)
 
+    # Get balance trend data for sparkline
+    balance_trend = get_balance_trend(db, user_id, settings, weeks=8)
+
     # Build context dictionary
     context = {
         "entries": entries_with_calculations,
         "weekly_summary": weekly_summary,
+        "balance_trend": balance_trend,
     }
 
     # Add monthly view context if month/year are specified
@@ -231,6 +282,10 @@ async def list_time_entries(
         else:
             next_date = date(year, month, 1)
 
+        # Determine if viewing current month
+        today = date.today()
+        is_current_month = month == today.month and year == today.year
+
         # Add all monthly context
         context.update(
             {
@@ -243,6 +298,7 @@ async def list_time_entries(
                 "next_month": next_month,
                 "next_year": next_year,
                 "next_date": next_date,
+                "is_current_month": is_current_month,
             }
         )
 

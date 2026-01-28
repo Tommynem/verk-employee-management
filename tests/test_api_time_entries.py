@@ -32,6 +32,38 @@ class TestTimeEntryList:
         # Empty state message should be present
         assert "Keine Zeiteinträge" in response.text or "keine" in response.text.lower()
 
+    def test_list_entries_sorted_by_date_ascending(self, client, db_session):
+        """GET /time-entries returns entries in chronological order (oldest first)."""
+        # Create entries out of chronological order
+        entry3 = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 20), start_time=time(8, 0), end_time=time(16, 0)
+        )
+        entry1 = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 10), start_time=time(8, 0), end_time=time(16, 0)
+        )
+        entry2 = TimeEntryFactory.build(
+            user_id=1, work_date=date(2026, 1, 15), start_time=time(8, 0), end_time=time(16, 0)
+        )
+        db_session.add_all([entry3, entry1, entry2])
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Check that dates appear in chronological order in the HTML
+        # Find all date positions in the response
+        pos_10 = response.text.find("10.01.26")
+        pos_15 = response.text.find("15.01.26")
+        pos_20 = response.text.find("20.01.26")
+
+        # All dates should be present
+        assert pos_10 > 0
+        assert pos_15 > 0
+        assert pos_20 > 0
+
+        # Oldest date (10.01) should appear before middle date (15.01), which should appear before newest (20.01)
+        assert pos_10 < pos_15 < pos_20
+
     def test_list_entries_with_data(self, client, db_session):
         """GET /time-entries returns entries in HTML table."""
         # Create test entries
@@ -1371,3 +1403,87 @@ class TestCopyLastEntry:
         assert data["start_time"] is None
         assert data["end_time"] is None
         assert data["break_minutes"] == 0
+
+
+class TestBalanceTrend:
+    """Test balance trend sparkline functionality."""
+
+    def test_balance_trend_in_context(self, client, db_session):
+        """GET /time-entries includes balance_trend data in context."""
+        # Create user settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+
+        # Create entries over multiple weeks to generate trend data
+        today = date.today()
+        for weeks_ago in range(7, -1, -1):
+            week_offset = timedelta(weeks=weeks_ago)
+            entry_date = today - week_offset - timedelta(days=today.weekday())  # Monday of that week
+
+            # Create entry with 8 hours worked
+            entry = TimeEntryFactory.build(
+                user_id=1, work_date=entry_date, start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+            )
+            db_session.add(entry)
+
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Check that sparkline SVG is present in response
+        assert '<svg class="w-24 h-8"' in response.text
+        assert 'viewBox="0 0 100 30"' in response.text
+        assert "<polyline" in response.text
+
+    def test_balance_trend_sparkline_color_positive(self, client, db_session):
+        """Balance trend sparkline shows green when balance is positive."""
+        # Create user settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+
+        # Create entries with overtime (9 hours instead of 8)
+        today = date.today()
+        for weeks_ago in range(7, -1, -1):
+            week_offset = timedelta(weeks=weeks_ago)
+            entry_date = today - week_offset - timedelta(days=today.weekday())
+
+            # 9 hours worked = positive balance
+            entry = TimeEntryFactory.build(
+                user_id=1, work_date=entry_date, start_time=time(8, 0), end_time=time(17, 0), break_minutes=0
+            )
+            db_session.add(entry)
+
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Check for green stroke color (success color)
+        assert "#22c55e" in response.text or "text-success" in response.text
+
+    def test_balance_trend_sparkline_color_negative(self, client, db_session):
+        """Balance trend sparkline shows red when balance is negative."""
+        # Create user settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+
+        # Create entries with undertime (6 hours instead of 8)
+        today = date.today()
+        for weeks_ago in range(7, -1, -1):
+            week_offset = timedelta(weeks=weeks_ago)
+            entry_date = today - week_offset - timedelta(days=today.weekday())
+
+            # 6 hours worked = negative balance
+            entry = TimeEntryFactory.build(
+                user_id=1, work_date=entry_date, start_time=time(8, 0), end_time=time(14, 0), break_minutes=0
+            )
+            db_session.add(entry)
+
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        # Check for red stroke color (error color)
+        assert "#ef4444" in response.text or "text-error" in response.text

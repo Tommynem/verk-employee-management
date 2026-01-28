@@ -201,6 +201,83 @@
     };
 
     /**
+     * Auto-suggest break time for work > 6 hours.
+     * German labor law (Arbeitszeitgesetz) requires 30 min break for >6h work.
+     *
+     * @param {HTMLElement} editRow - The edit row element
+     */
+    function suggestBreakTime(editRow) {
+        const startInput = editRow.querySelector('input[name="start_time"]');
+        const endInput = editRow.querySelector('input[name="end_time"]');
+        const breakInput = editRow.querySelector('input[name="break_minutes"]');
+
+        if (!startInput || !endInput || !breakInput) return;
+
+        const startTime = startInput.value;
+        const endTime = endInput.value;
+
+        // Only suggest if both times are filled and break is 0/empty
+        if (!startTime || !endTime) return;
+        if (breakInput.value && parseInt(breakInput.value, 10) > 0) return;
+
+        // Parse HH:MM format
+        const startParts = startTime.split(':');
+        const endParts = endTime.split(':');
+        if (startParts.length !== 2 || endParts.length !== 2) return;
+
+        const startH = parseInt(startParts[0], 10);
+        const startM = parseInt(startParts[1], 10);
+        const endH = parseInt(endParts[0], 10);
+        const endM = parseInt(endParts[1], 10);
+
+        // Validate time values
+        if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return;
+
+        // Calculate duration in minutes
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+        const durationMinutes = endMinutes - startMinutes;
+
+        // If > 6 hours (360 min), suggest 30 min break
+        if (durationMinutes > 360) {
+            breakInput.value = 30;
+            // Brief visual highlight
+            breakInput.classList.add('input-warning');
+            setTimeout(() => breakInput.classList.remove('input-warning'), 2000);
+        }
+    }
+
+    /**
+     * Event delegation for time input changes to trigger break suggestion
+     */
+    document.addEventListener('change', function(event) {
+        if (event.target.matches('[data-edit-row] input[name="start_time"], [data-edit-row] input[name="end_time"]')) {
+            const editRow = event.target.closest('[data-edit-row]');
+            if (editRow) {
+                suggestBreakTime(editRow);
+            }
+        }
+    });
+
+    /**
+     * Trigger break suggestion after blur event when time formatting completes
+     */
+    document.addEventListener('blur', function(event) {
+        const target = event.target;
+
+        // After time input formatting, check if we should suggest break time
+        if (target.tagName === 'INPUT' &&
+            (target.name === 'start_time' || target.name === 'end_time')) {
+
+            const editRow = target.closest('[data-edit-row]');
+            if (editRow) {
+                // Small delay to ensure formatted value is set
+                setTimeout(() => suggestBreakTime(editRow), 50);
+            }
+        }
+    }, true);
+
+    /**
      * Copy last entry's times to current edit row
      * Fetches the most recent entry's start_time, end_time, and break_minutes
      * and populates the current row's input fields
@@ -246,5 +323,34 @@
             alert('Fehler beim Kopieren der letzten Eintragsdaten');
         }
     };
+
+    /**
+     * Auto-refresh time entries view when entries are created, updated, or deleted.
+     * This ensures summary cards (Monatssaldo, Sollstunden, Aktuelles Zeitkonto)
+     * and weekly summaries update automatically without manual page refresh.
+     */
+    document.body.addEventListener('timeEntryCreated', function() {
+        refreshTimeEntriesView();
+    });
+
+    document.body.addEventListener('timeEntryUpdated', function() {
+        refreshTimeEntriesView();
+    });
+
+    document.body.addEventListener('timeEntryDeleted', function() {
+        refreshTimeEntriesView();
+    });
+
+    /**
+     * Helper function to refresh the time entries content area
+     */
+    function refreshTimeEntriesView() {
+        const contentEl = document.getElementById('time-entries-content');
+        if (contentEl) {
+            // Re-fetch current view to update summaries
+            const url = window.location.pathname + window.location.search;
+            htmx.ajax('GET', url, {target: '#time-entries-content', swap: 'innerHTML'});
+        }
+    }
 
 })();
