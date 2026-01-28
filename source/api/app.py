@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # Import routers
-from source.api.routers import summaries, time_entries
+from source.api.routers import settings, summaries, time_entries
 
 app = FastAPI(
     title="Verk Zeiterfassung",
@@ -63,6 +63,18 @@ async def server_error_handler(request: Request, exc: Exception) -> HTMLResponse
 # Include routers
 app.include_router(time_entries.router)
 app.include_router(summaries.router)
+app.include_router(settings.router)
+
+
+@app.get("/")
+async def root():
+    """Redirect root to time entries page for current month."""
+    from datetime import date
+
+    from fastapi.responses import RedirectResponse
+
+    today = date.today()
+    return RedirectResponse(url=f"/time-entries?month={today.month}&year={today.year}", status_code=302)
 
 
 @app.get("/api/health")

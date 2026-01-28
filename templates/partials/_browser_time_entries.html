@@ -1,77 +1,132 @@
 {% from "macros/_icons.html" import icon %}
 
-<div class="overflow-x-auto">
-    {% if entries %}
-    <table class="table table-zebra w-full">
-        <thead>
-            <tr>
-                <th>Datum</th>
-                <th>Start</th>
-                <th>Ende</th>
-                <th>Pause</th>
-                <th>Stunden</th>
-                <th>Typ</th>
-                <th>Status</th>
-                <th>Aktionen</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for entry in entries %}
-            <tr hx-get="/time-entries/{{ entry.id }}"
-                hx-target="#detail-pane"
-                hx-swap="innerHTML"
-                class="hover cursor-pointer">
-                <td>{{ entry.work_date.strftime('%d.%m.%Y') }}</td>
-                <td>{{ entry.start_time.strftime('%H:%M') if entry.start_time else '-' }}</td>
-                <td>{{ entry.end_time.strftime('%H:%M') if entry.end_time else '-' }}</td>
-                <td>{{ entry.break_minutes|minutes }}</td>
-                <td>
-                    {% if entry.start_time and entry.end_time %}
-                        {% set hours = ((entry.end_time.hour * 60 + entry.end_time.minute) - (entry.start_time.hour * 60 + entry.start_time.minute) - entry.break_minutes) / 60 %}
-                        {{ hours|hours }}
-                    {% else %}
-                        -
-                    {% endif %}
-                </td>
-                <td>
-                    {% if entry.absence_type.value == 'none' %}
-                        <span class="badge badge-ghost">Arbeit</span>
-                    {% elif entry.absence_type.value == 'vacation' %}
-                        <span class="badge badge-info">Urlaub</span>
-                    {% elif entry.absence_type.value == 'sick' %}
-                        <span class="badge badge-warning">Krank</span>
-                    {% elif entry.absence_type.value == 'holiday' %}
-                        <span class="badge badge-success">Feiertag</span>
-                    {% elif entry.absence_type.value == 'flex_time' %}
-                        <span class="badge badge-accent">Zeitausgleich</span>
-                    {% endif %}
-                </td>
-                <td>
-                    {% if entry.status.value == 'draft' %}
-                        <span class="badge badge-outline">Entwurf</span>
-                    {% elif entry.status.value == 'submitted' %}
-                        <span class="badge badge-primary">Abgegeben</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <button class="btn btn-ghost btn-xs"
-                            hx-get="/time-entries/{{ entry.id }}"
-                            hx-target="#detail-pane"
-                            hx-swap="innerHTML">
-                        {{ icon("eye", class="w-4 h-4") }}
-                    </button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <div class="text-center py-12">
-        <div class="text-base-content/50 mb-4">
-            {{ icon("inbox", class="w-16 h-16 mx-auto") }}
+{# Monthly navigation if month context is available #}
+{% if month and year %}
+<div class="flex items-center gap-3 mb-6">
+    <button class="btn btn-ghost btn-square"
+            hx-get="/time-entries?month={{ prev_month }}&year={{ prev_year }}"
+            hx-target="#time-entries-content"
+            hx-swap="innerHTML"
+            hx-push-url="true"
+            aria-label="Vorheriger Monat">
+        {{ icon("chevron-left", class="w-5 h-5") }}
+    </button>
+    <h2 class="text-2xl font-medium text-base-content">
+        {{ month_name }} {{ year }}
+    </h2>
+    <button class="btn btn-ghost btn-square"
+            hx-get="/time-entries?month={{ next_month }}&year={{ next_year }}"
+            hx-target="#time-entries-content"
+            hx-swap="innerHTML"
+            hx-push-url="true"
+            aria-label="Nächster Monat">
+        {{ icon("chevron-right", class="w-5 h-5") }}
+    </button>
+</div>
+
+{# Summary cards if summary is available #}
+{% if summary %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    {# Card 1: Monatssaldo (Total Actual) #}
+    <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg">
+        <div class="card-body p-6">
+            <p class="text-sm text-base-content/70">Monatssaldo</p>
+            <p class="text-3xl font-normal text-primary">{{ summary.total_actual|format_hours }}</p>
+            <p class="text-xs text-base-content/50">Ist-Stunden</p>
         </div>
-        <p class="text-lg font-medium text-base-content/70">Keine Zeiteinträge gefunden</p>
-        <p class="text-sm text-base-content/50 mt-2">Erstellen Sie einen neuen Eintrag, um zu beginnen.</p>
     </div>
-    {% endif %}
+
+    {# Card 2: Sollstunden (Total Target) #}
+    <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg">
+        <div class="card-body p-6">
+            <p class="text-sm text-base-content/70">Sollstunden</p>
+            <p class="text-3xl font-normal text-base-content">{{ summary.total_target|format_hours }}</p>
+            <p class="text-xs text-base-content/50">Pro Monat</p>
+        </div>
+    </div>
+
+    {# Card 3: Aktuelles Zeitkonto (Balance) #}
+    <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg">
+        <div class="card-body p-6">
+            <p class="text-sm text-base-content/70">Aktuelles Zeitkonto</p>
+            <p class="text-3xl font-normal {% if summary.carryover_out >= 0 %}text-success{% else %}text-error{% endif %}">
+                {{ summary.carryover_out|format_balance }}h
+            </p>
+            <p class="text-xs text-base-content/50">Überstunden</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="card bg-base-100 shadow-md border border-base-300 rounded-lg overflow-hidden">
+    <div class="overflow-x-auto">
+        <table id="time-entries-table" class="table w-full">
+            <thead>
+                <tr class="bg-neutral text-white">
+                    <th class="font-bold text-sm">Tag</th>
+                    <th class="font-bold text-sm">Ankunft</th>
+                    <th class="font-bold text-sm">Ende</th>
+                    <th class="font-bold text-sm">Pausen</th>
+                    <th class="font-bold text-sm">Arbeitsstunden Real</th>
+                    <th class="font-bold text-sm">Arbeitsstunden Soll</th>
+                    <th class="font-bold text-sm">+/-</th>
+                    <th class="font-bold text-sm">Abwesenheit / Bemerkung</th>
+                    <th class="font-bold text-sm text-center">Zeitausgleich</th>
+                    <th class="font-bold text-sm text-center">Urlaub?</th>
+                    <th class="font-bold text-sm w-12"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if entries %}
+                    {% for entry in entries %}
+                    {% include "partials/_row_time_entry.html" %}
+                    {% endfor %}
+                {% else %}
+                {# Empty state row when no entries #}
+                <tr>
+                    <td colspan="11" class="text-center py-12">
+                        <div class="text-base-content/50 mb-4">
+                            {{ icon("inbox", class="w-16 h-16 mx-auto") }}
+                        </div>
+                        <p class="text-lg font-medium text-base-content/70">Keine Zeiteinträge gefunden</p>
+                        <p class="text-sm text-base-content/50 mt-2">Erstellen Sie einen neuen Eintrag, um zu beginnen.</p>
+                    </td>
+                </tr>
+                {% endif %}
+
+                {# Add New Entry row - always show when next_date is available #}
+                {% if next_date %}
+                <tr id="add-row-trigger" class="bg-warning/10 border-b border-base-300">
+                    <td colspan="11" class="py-4">
+                        <button class="flex items-center justify-center gap-2 w-full text-primary font-medium"
+                                hx-get="/time-entries/new-row?date={{ next_date }}"
+                                hx-target="closest tr"
+                                hx-swap="beforebegin">
+                            {{ icon("plus-circle", class="w-5 h-5") }}
+                            <span>{% if entries %}Nächsten Tag hinzufügen ({{ next_date.strftime('%d.%m.%y') }}){% else %}Ersten Eintrag hinzufügen ({{ next_date.strftime('%d.%m.%y') }}){% endif %}</span>
+                        </button>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+
+            {# Table footer with summary rows - only if summary exists #}
+            {% if summary %}
+            <tfoot class="border-t-2 border-success bg-success/10">
+                <tr class="bg-success/5">
+                    <td colspan="4" class="py-3 px-4 font-bold text-sm">Monatssaldo:</td>
+                    <td class="py-3 px-4 font-bold text-sm">{{ summary.total_actual|format_hours }}</td>
+                    <td class="py-3 px-4 font-bold text-sm">{{ summary.total_target|format_hours }}</td>
+                    <td colspan="5"></td>
+                </tr>
+                <tr class="bg-success/20">
+                    <td colspan="4" class="py-3 px-4 font-bold text-sm">Aktuelles Zeitkonto:</td>
+                    <td class="py-3 px-4 font-bold text-sm text-success">{{ summary.carryover_out|format_balance }}</td>
+                    <td colspan="6"></td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
 </div>

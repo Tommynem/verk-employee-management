@@ -1,0 +1,196 @@
+{% from "macros/_icons.html" import icon %}
+
+{# Determine if this is a new entry or existing #}
+{% set is_new = entry is none %}
+{% set row_id = "time-entry-row-new" if is_new else "time-entry-row-" ~ entry.id %}
+
+{# Calculate actual_hours and balance for display-only fields #}
+{% if not is_new and entry.start_time and entry.end_time %}
+    {% set actual_minutes = (entry.end_time.hour * 60 + entry.end_time.minute) - (entry.start_time.hour * 60 + entry.start_time.minute) - (entry.break_minutes or 0) %}
+    {% set actual_hours = (actual_minutes / 60)|round(2) %}
+{% else %}
+    {% set actual_hours = 0 %}
+{% endif %}
+{% set target_hours = 8.0 %}
+{% set balance = actual_hours - target_hours %}
+
+<tr id="{{ row_id }}"
+    class="{% if not is_new and loop is defined and loop.index is even %}bg-base-200{% endif %} border-b border-base-300 bg-warning/5">
+
+    {# 1. Tag (Date) - Read-only for existing, input for new #}
+    <td class="py-3 px-4 text-sm">
+        {% if is_new %}
+        <input type="date"
+               name="work_date"
+               value="{{ default_date.strftime('%Y-%m-%d') if default_date else '' }}"
+               class="input input-sm input-bordered w-32"
+               required />
+        {% else %}
+        {{ entry.work_date.strftime('%d.%m.%y') }}
+        <input type="hidden" name="work_date" value="{{ entry.work_date.strftime('%Y-%m-%d') }}" />
+        {% endif %}
+    </td>
+
+    {# 2. Ankunft (Start Time) #}
+    <td class="py-3 px-4">
+        <input type="text"
+               name="start_time"
+               value="{{ entry.start_time.strftime('%H:%M') if entry and entry.start_time else (default_start_time or '') }}"
+               pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+               placeholder="08:00"
+               class="input input-sm input-bordered w-20"
+               title="Format: HH:MM (z.B. 08:00)" />
+    </td>
+
+    {# 3. Ende (End Time) #}
+    <td class="py-3 px-4">
+        <input type="text"
+               name="end_time"
+               value="{{ entry.end_time.strftime('%H:%M') if entry and entry.end_time else (default_end_time or '') }}"
+               pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+               placeholder="16:00"
+               class="input input-sm input-bordered w-20"
+               title="Format: HH:MM (z.B. 16:00)" />
+    </td>
+
+    {# 4. Pausen (Break in minutes) #}
+    <td class="py-3 px-4">
+        <input type="number"
+               name="break_minutes"
+               value="{{ entry.break_minutes if entry else (default_break_minutes if default_break_minutes is defined else 30) }}"
+               min="0"
+               max="480"
+               step="5"
+               class="input input-sm input-bordered w-16"
+               title="Pausenzeit in Minuten" />
+    </td>
+
+    {# 5. Arbeitsstunden Real (Display-only, calculated) #}
+    <td class="py-3 px-4 text-sm bg-info/10">
+        {% if not is_new and actual_hours %}
+        {{ actual_hours|format_hours }}
+        {% endif %}
+    </td>
+
+    {# 6. Arbeitsstunden Soll (Display-only) #}
+    <td class="py-3 px-4 text-sm">{{ target_hours|format_hours }}</td>
+
+    {# 7. +/- (Display-only, calculated) #}
+    <td class="py-3 px-4 text-sm {% if balance >= 0 %}text-success{% else %}text-error{% endif %}">
+        {% if not is_new %}
+        {{ balance|format_balance }}
+        {% endif %}
+    </td>
+
+    {# 8. Bemerkung (Notes) #}
+    <td class="py-3 px-4">
+        <input type="text"
+               name="notes"
+               value="{{ entry.notes or '' if entry else '' }}"
+               placeholder="Bemerkung"
+               maxlength="500"
+               class="input input-sm input-bordered w-full" />
+    </td>
+
+    {# 9. Zeitausgleich (Flex Time checkbox) #}
+    <td class="py-3 px-4 text-center">
+        <input type="checkbox"
+               name="flex_time"
+               class="checkbox checkbox-sm"
+               {% if entry and entry.absence_type.value == 'flex_time' %}checked{% endif %} />
+    </td>
+
+    {# 10. Urlaub? (Vacation checkbox) #}
+    <td class="py-3 px-4 text-center">
+        <input type="checkbox"
+               name="vacation"
+               class="checkbox checkbox-sm"
+               {% if entry and entry.absence_type.value == 'vacation' %}checked{% endif %} />
+    </td>
+
+    {# 11. Actions (Save and Cancel buttons) #}
+    <td class="py-3 px-4 w-12">
+        <div class="flex gap-1 items-center justify-end">
+            {# Save button #}
+            {% if is_new %}
+            <button type="button"
+                    class="btn btn-primary btn-xs"
+                    hx-post="/time-entries"
+                    hx-include="closest tr"
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                    title="Speichern">
+                {{ icon("check", class="w-3 h-3") }}
+            </button>
+            {% else %}
+            <button type="button"
+                    class="btn btn-primary btn-xs"
+                    hx-patch="/time-entries/{{ entry.id }}"
+                    hx-include="closest tr"
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                    title="Speichern">
+                {{ icon("check", class="w-3 h-3") }}
+            </button>
+            {% endif %}
+
+            {# Cancel button #}
+            {% if is_new %}
+            <button type="button"
+                    class="btn btn-ghost btn-xs"
+                    onclick="this.closest('tr').remove()"
+                    title="Abbrechen">
+                {{ icon("x", class="w-3 h-3") }}
+            </button>
+            {% else %}
+            <button type="button"
+                    class="btn btn-ghost btn-xs"
+                    hx-get="/time-entries/{{ entry.id }}/row"
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                    title="Abbrechen">
+                {{ icon("x", class="w-3 h-3") }}
+            </button>
+            {% endif %}
+
+            {# Delete button - only for existing entries #}
+            {% if not is_new %}
+            <button type="button"
+                    class="btn btn-error btn-xs"
+                    hx-delete="/time-entries/{{ entry.id }}"
+                    hx-confirm="Eintrag wirklich löschen?"
+                    hx-target="closest tr"
+                    hx-swap="delete"
+                    title="Löschen">
+                {{ icon("trash-2", class="w-3 h-3") }}
+            </button>
+            {% endif %}
+        </div>
+    </td>
+</tr>
+
+{# Keyboard support with vanilla JavaScript #}
+<script>
+(function() {
+    const row = document.getElementById('{{ row_id }}');
+    if (!row) return;
+
+    // Handle Enter key to submit
+    row.addEventListener('keydown', function(event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            const saveBtn = row.querySelector('.btn-primary');
+            if (saveBtn) saveBtn.click();
+        }
+    });
+
+    // Handle Escape key to cancel
+    row.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            const cancelBtn = row.querySelector('.btn-ghost');
+            if (cancelBtn) cancelBtn.click();
+        }
+    });
+})();
+</script>

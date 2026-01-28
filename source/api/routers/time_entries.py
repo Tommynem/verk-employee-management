@@ -3,7 +3,7 @@
 Routes follow VaWW REST+HTMX pattern with HTML partial responses.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
@@ -16,9 +16,26 @@ from source.api.context import render_template
 from source.api.dependencies import get_current_user_id, get_db
 from source.api.schemas import TimeEntryCreate, TimeEntryUpdate
 from source.database.enums import AbsenceType, RecordStatus
-from source.database.models import TimeEntry
+from source.database.models import TimeEntry, UserSettings
+from source.services.time_calculation import TimeCalculationService
 
 router = APIRouter(prefix="/time-entries", tags=["time-entries"])
+
+# German month names
+GERMAN_MONTHS = {
+    1: "Januar",
+    2: "Februar",
+    3: "März",
+    4: "April",
+    5: "Mai",
+    6: "Juni",
+    7: "Juli",
+    8: "August",
+    9: "September",
+    10: "Oktober",
+    11: "November",
+    12: "Dezember",
+}
 
 
 @router.get("", response_class=HTMLResponse)
@@ -56,21 +73,138 @@ async def list_time_entries(
     # Order by date descending
     entries = query.order_by(TimeEntry.work_date.desc()).all()
 
-    html = render_template(request, "partials/_browser_time_entries.html", entries=entries)
+    # Build context dictionary
+    context = {"entries": entries}
+
+    # Add monthly view context if month/year are specified
+    if month is not None and year is not None:
+        # Get or create UserSettings
+        settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        if not settings:
+            # Create default settings if not found (MVP: user_id=1)
+            from decimal import Decimal
+
+            settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+            db.add(settings)
+            db.commit()
+            db.refresh(settings)
+
+        # Calculate monthly summary
+        service = TimeCalculationService()
+        summary = service.monthly_summary(entries, settings, year, month)
+
+        # Calculate prev/next month navigation
+        if month == 1:
+            prev_month, prev_year = 12, year - 1
+        else:
+            prev_month, prev_year = month - 1, year
+
+        if month == 12:
+            next_month, next_year = 1, year + 1
+        else:
+            next_month, next_year = month + 1, year
+
+        # Calculate next_date for "Add Next Day" button
+        if entries:
+            next_date = max(entry.work_date for entry in entries) + timedelta(days=1)
+        else:
+            next_date = date(year, month, 1)
+
+        # Add all monthly context
+        context.update(
+            {
+                "summary": summary,
+                "month": month,
+                "year": year,
+                "month_name": GERMAN_MONTHS[month],
+                "prev_month": prev_month,
+                "prev_year": prev_year,
+                "next_month": next_month,
+                "next_year": next_year,
+                "next_date": next_date,
+            }
+        )
+
+    # Detect if this is an HTMX request
+    is_htmx = request.headers.get("HX-Request") == "true"
+
+    if is_htmx:
+        # HTMX request - return partial only
+        html = render_template(request, "partials/_browser_time_entries.html", **context)
+    else:
+        # Direct browser access - return full page
+        html = render_template(request, "pages/time_entries.html", **context)
+
     return HTMLResponse(content=html, status_code=200)
 
 
 @router.get("/new", response_class=HTMLResponse)
-async def new_time_entry_form(request: Request) -> HTMLResponse:
+async def new_time_entry_form(
+    request: Request,
+    date: date | None = Query(None, alias="date"),
+) -> HTMLResponse:
     """Show new time entry form.
 
     Args:
         request: FastAPI request object
+        date: Optional default date for the form
 
     Returns:
         HTML response with new entry form
     """
-    html = render_template(request, "partials/_new_time_entry.html")
+    html = render_template(request, "partials/_new_time_entry.html", default_date=date)
+    return HTMLResponse(content=html, status_code=200)
+
+
+@router.get("/new-row", response_class=HTMLResponse)
+async def new_row(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+    default_date: date | None = Query(None, alias="date"),
+) -> HTMLResponse:
+    """Get editable row partial for new entry.
+
+    Fetches weekday defaults from user settings if available.
+
+    Args:
+        request: FastAPI request object
+        db: Database session
+        user_id: Current user ID
+        default_date: Optional default date for the entry
+
+    Returns:
+        HTML response with editable row partial
+    """
+    # Default values
+    default_start_time = None
+    default_end_time = None
+    default_break_minutes = 30
+
+    # Fetch weekday defaults if date is provided
+    if default_date:
+        settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        if settings and settings.schedule_json:
+            weekday_defaults = settings.schedule_json.get("weekday_defaults", {})
+            # date.weekday() returns 0=Monday, 6=Sunday (matches our schema)
+            weekday_key = str(default_date.weekday())
+            day_defaults = weekday_defaults.get(weekday_key)
+
+            if day_defaults:  # Not None (workday)
+                default_start_time = day_defaults.get("start_time")
+                default_end_time = day_defaults.get("end_time")
+                default_break_minutes = day_defaults.get("break_minutes", 30)
+
+    html = render_template(
+        request,
+        "partials/_row_time_entry_edit.html",
+        entry=None,
+        default_date=default_date,
+        default_start_time=default_start_time,
+        default_end_time=default_end_time,
+        default_break_minutes=default_break_minutes,
+        loop={"index": 0},
+    )
     return HTMLResponse(content=html, status_code=200)
 
 
@@ -157,8 +291,13 @@ async def create_time_entry(
 
         db.refresh(entry)
 
-        # Render detail partial
-        html = render_template(request, "partials/_detail_time_entry.html", entry=entry)
+        # Render row partial for inline editing
+        html = render_template(
+            request,
+            "partials/_row_time_entry.html",
+            entry=entry,
+            loop={"index": 0},  # Provide mock loop context for standalone row
+        )
         response = HTMLResponse(content=html, status_code=201)
         response.headers["HX-Trigger"] = "timeEntryCreated"
         return response
@@ -194,6 +333,68 @@ async def get_time_entry(
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
 
     html = render_template(request, "partials/_detail_time_entry.html", entry=entry)
+    return HTMLResponse(content=html, status_code=200)
+
+
+@router.get("/{entry_id}/edit-row", response_class=HTMLResponse)
+async def edit_row(
+    request: Request,
+    entry_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> HTMLResponse:
+    """Get editable row partial for inline editing.
+
+    Args:
+        request: FastAPI request object
+        entry_id: Time entry ID
+        db: Database session
+        user_id: Current user ID from auth
+
+    Returns:
+        HTML response with editable row for existing entry
+
+    Raises:
+        HTTPException: 404 if entry not found
+    """
+    entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.user_id == user_id).first()
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+
+    # Provide mock loop object for standalone rendering
+    html = render_template(request, "partials/_row_time_entry_edit.html", entry=entry, loop={"index": 0})
+    return HTMLResponse(content=html, status_code=200)
+
+
+@router.get("/{entry_id}/row", response_class=HTMLResponse)
+async def get_row(
+    request: Request,
+    entry_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> HTMLResponse:
+    """Get read-only row partial for display.
+
+    Args:
+        request: FastAPI request object
+        entry_id: Time entry ID
+        db: Database session
+        user_id: Current user ID from auth
+
+    Returns:
+        HTML response with read-only row for display
+
+    Raises:
+        HTTPException: 404 if entry not found
+    """
+    entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.user_id == user_id).first()
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+
+    # Provide mock loop object for standalone rendering
+    html = render_template(request, "partials/_row_time_entry.html", entry=entry, loop={"index": 0})
     return HTMLResponse(content=html, status_code=200)
 
 
@@ -312,8 +513,13 @@ async def update_time_entry(
         db.commit()
         db.refresh(entry)
 
-        # Render updated detail partial
-        html = render_template(request, "partials/_detail_time_entry.html", entry=entry)
+        # Render updated row partial for inline editing
+        html = render_template(
+            request,
+            "partials/_row_time_entry.html",
+            entry=entry,
+            loop={"index": 0},  # Provide mock loop context for standalone row
+        )
         response = HTMLResponse(content=html, status_code=200)
         response.headers["HX-Trigger"] = "timeEntryUpdated"
         return response

@@ -1,0 +1,88 @@
+{% set day_names = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'] %}
+{% set weekday_defaults = settings.schedule_json.weekday_defaults if settings and settings.schedule_json and settings.schedule_json.weekday_defaults else {} %}
+
+<div class="card bg-base-100 shadow-md border border-base-300 rounded-lg">
+    <div class="card-body">
+        <h2 class="card-title mb-4">Wöchentliche Arbeitszeiten</h2>
+
+        <form hx-patch="/settings/weekday-defaults"
+              hx-target="#settings-content"
+              hx-swap="innerHTML">
+
+            <div class="overflow-x-auto">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Tag</th>
+                            <th>Ankunft</th>
+                            <th>Ende</th>
+                            <th>Pause (Min.)</th>
+                            <th class="text-center">Arbeitstag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for i in range(7) %}
+                        {% set day = weekday_defaults.get(i|string, {}) %}
+                        {% set is_workday = day is not none and day != null and day != {} %}
+                        <tr>
+                            <td class="font-medium">{{ day_names[i] }}</td>
+                            <td>
+                                <input type="text"
+                                       name="weekday_{{ i }}_start_time"
+                                       value="{{ day.start_time if day and day.start_time else ('08:00' if i < 5 else '') }}"
+                                       pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+                                       placeholder="HH:MM"
+                                       class="input input-sm input-bordered w-24"
+                                       {% if not is_workday and i >= 5 %}disabled{% endif %} />
+                            </td>
+                            <td>
+                                <input type="text"
+                                       name="weekday_{{ i }}_end_time"
+                                       value="{{ day.end_time if day and day.end_time else ('16:30' if i < 5 else '') }}"
+                                       pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+                                       placeholder="HH:MM"
+                                       class="input input-sm input-bordered w-24"
+                                       {% if not is_workday and i >= 5 %}disabled{% endif %} />
+                            </td>
+                            <td>
+                                <input type="number"
+                                       name="weekday_{{ i }}_break_minutes"
+                                       value="{{ day.break_minutes if day and day.break_minutes is not none else (30 if i < 5 else '') }}"
+                                       min="0"
+                                       max="480"
+                                       class="input input-sm input-bordered w-20"
+                                       {% if not is_workday and i >= 5 %}disabled{% endif %} />
+                            </td>
+                            <td class="text-center">
+                                <input type="checkbox"
+                                       name="weekday_{{ i }}_enabled"
+                                       class="checkbox checkbox-primary"
+                                       {% if is_workday or (not is_workday and i < 5) %}checked{% endif %}
+                                       onchange="toggleWeekdayInputs({{ i }}, this.checked)" />
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-end mt-6">
+                <button type="submit" class="btn btn-primary">
+                    Speichern
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleWeekdayInputs(weekday, enabled) {
+    const inputs = document.querySelectorAll(`[name^="weekday_${weekday}_"]:not([name$="_enabled"])`);
+    inputs.forEach(input => {
+        input.disabled = !enabled;
+        if (!enabled) {
+            input.value = '';
+        }
+    });
+}
+</script>

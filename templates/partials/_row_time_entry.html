@@ -1,0 +1,65 @@
+{% from "macros/_icons.html" import icon %}
+
+{# Calculate actual_hours, target_hours, balance #}
+{% if entry.start_time and entry.end_time %}
+    {% set actual_minutes = (entry.end_time.hour * 60 + entry.end_time.minute) - (entry.start_time.hour * 60 + entry.start_time.minute) - entry.break_minutes %}
+    {% set actual_hours = (actual_minutes / 60)|round(2) %}
+{% else %}
+    {% set actual_hours = 0 %}
+{% endif %}
+{% set target_hours = 8.0 %}
+{% set balance = actual_hours - target_hours %}
+
+<tr id="time-entry-row-{{ entry.id }}"
+    class="{% if loop is defined and loop.index is even %}bg-base-200{% endif %} border-b border-base-300 cursor-pointer hover:bg-base-300/50 transition-colors"
+    hx-get="/time-entries/{{ entry.id }}/edit-row"
+    hx-target="closest tr"
+    hx-swap="outerHTML"
+    hx-trigger="click">
+    {# 1. Tag (Date) #}
+    <td class="py-3 px-4 text-sm">{{ entry.work_date.strftime('%d.%m.%y') }}</td>
+
+    {# 2. Ankunft (Start Time) #}
+    <td class="py-3 px-4 text-sm">{{ entry.start_time.strftime('%H:%M') if entry.start_time else '' }}</td>
+
+    {# 3. Ende (End Time) #}
+    <td class="py-3 px-4 text-sm">{{ entry.end_time.strftime('%H:%M') if entry.end_time else '' }}</td>
+
+    {# 4. Pausen (Break) #}
+    <td class="py-3 px-4 text-sm">{{ entry.break_minutes|format_duration if entry.break_minutes else '' }}</td>
+
+    {# 5. Arbeitsstunden Real (Actual Hours) #}
+    <td class="py-3 px-4 text-sm bg-info/10">{{ actual_hours|format_hours if actual_hours else '' }}</td>
+
+    {# 6. Arbeitsstunden Soll (Target Hours) #}
+    <td class="py-3 px-4 text-sm">{{ target_hours|format_hours }}</td>
+
+    {# 7. +/- (Balance) #}
+    <td class="py-3 px-4 text-sm {% if balance >= 0 %}text-success{% else %}text-error{% endif %}">
+        {{ balance|format_balance }}
+    </td>
+
+    {# 8. Abwesenheit / Bemerkung (Notes) #}
+    <td class="py-3 px-4 text-sm text-base-content/70">{{ entry.notes or '' }}</td>
+
+    {# 9. Zeitausgleich (Flex Time) #}
+    <td class="py-3 px-4 text-center" onclick="event.stopPropagation()">
+        <input type="checkbox" class="checkbox checkbox-sm"
+               {% if entry.absence_type.value == 'flex_time' %}checked{% endif %}
+               hx-patch="/time-entries/{{ entry.id }}"
+               hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}"}'
+               hx-swap="none" />
+    </td>
+
+    {# 10. Urlaub? (Vacation) #}
+    <td class="py-3 px-4 text-center" onclick="event.stopPropagation()">
+        <input type="checkbox" class="checkbox checkbox-sm"
+               {% if entry.absence_type.value == 'vacation' %}checked{% endif %}
+               hx-patch="/time-entries/{{ entry.id }}"
+               hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}"}'
+               hx-swap="none" />
+    </td>
+
+    {# 11. Actions (Empty for view mode) #}
+    <td class="py-3 px-4 w-12"></td>
+</tr>

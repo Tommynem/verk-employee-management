@@ -105,4 +105,5 @@ temp/
 .playwright-mcp/
 
 # Data storage (user data)
-data/
+data/*
+!data/.gitkeep

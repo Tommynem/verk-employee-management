@@ -19,6 +19,7 @@
                 <li><a href="/">Dashboard</a></li>
                 <li><a href="/employees">Mitarbeiter</a></li>
                 <li><a href="/time-entries">Zeiterfassung</a></li>
+                <li><a href="/settings">Einstellungen</a></li>
             </ul>
         </div>
     </nav>
@@ -30,6 +31,34 @@
 
     <!-- Toast Container -->
     <div id="toast-container" class="toast toast-end z-50"></div>
+
+    <!-- Modal Container for HTMX modals -->
+    <div id="modal-container"></div>
+
+    <!-- Toast display function -->
+    <script>
+    function showToast(message, type = 'error') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} shadow-lg mb-2`;
+        toast.innerHTML = `<span>${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+    }
+
+    // HTMX error handler for validation errors
+    document.body.addEventListener('htmx:responseError', function(event) {
+        const xhr = event.detail.xhr;
+        if (xhr.status === 422) {
+            try {
+                const response = JSON.parse(xhr.responseText);
+                showToast(response.detail || 'Validierungsfehler', 'error');
+            } catch {
+                showToast('Validierungsfehler', 'error');
+            }
+        }
+    });
+    </script>
 
     {% block scripts %}{% endblock %}
 </body>

@@ -1,0 +1,351 @@
+"""Test Settings API routes.
+
+Tests for Settings routes following VaWW REST+HTMX patterns.
+All tests should fail initially (TDD RED phase) until routes are implemented.
+
+Routes tested:
+- GET /settings -> HTML settings page
+- PATCH /settings/weekday-defaults -> Update weekday defaults, return form partial
+"""
+
+from decimal import Decimal
+
+from tests.factories import UserSettingsFactory
+
+
+class TestSettingsPage:
+    """Test GET /settings page view."""
+
+    def test_get_settings_page_success(self, client, db_session):
+        """GET /settings returns 200 with HTML page."""
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_settings_page_contains_weekday_section(self, client, db_session):
+        """Settings page contains weekday defaults section."""
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        # Should contain German day names
+        assert "Montag" in response.text
+        assert "Freitag" in response.text
+
+    def test_settings_page_contains_all_weekdays(self, client, db_session):
+        """Settings page contains all seven weekdays."""
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        # All seven German day names
+        assert "Montag" in response.text
+        assert "Dienstag" in response.text
+        assert "Mittwoch" in response.text
+        assert "Donnerstag" in response.text
+        assert "Freitag" in response.text
+        assert "Samstag" in response.text
+        assert "Sonntag" in response.text
+
+    def test_settings_page_prepopulates_existing_values(self, client, db_session):
+        """Settings page shows existing weekday defaults."""
+        # Create settings with custom weekday defaults
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            schedule_json={
+                "weekday_defaults": {
+                    "0": {"start_time": "09:00", "end_time": "17:00", "break_minutes": 45},
+                    "1": {"start_time": "09:00", "end_time": "17:00", "break_minutes": 45},
+                }
+            },
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        assert "09:00" in response.text
+        assert "17:00" in response.text
+
+    def test_settings_page_shows_default_values_when_no_settings(self, client, db_session):
+        """Settings page shows default values when no settings exist."""
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        # Default values (08:00, 16:30, 30 minutes) per spec
+        assert "08:00" in response.text
+        assert "16:30" in response.text
+
+    def test_settings_page_shows_null_for_weekends(self, client, db_session):
+        """Settings page shows weekends as non-working days."""
+        # Create settings with Saturday/Sunday as null (no work)
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            schedule_json={
+                "weekday_defaults": {
+                    "0": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},
+                    "1": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},
+                    "2": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},
+                    "3": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},
+                    "4": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},
+                    "5": None,  # Saturday - no work
+                    "6": None,  # Sunday - no work
+                }
+            },
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        # Should indicate weekends are non-working (empty inputs or checkboxes unchecked)
+        assert "Samstag" in response.text
+        assert "Sonntag" in response.text
+
+
+class TestWeekdayDefaultsUpdate:
+    """Test PATCH /settings/weekday-defaults endpoint."""
+
+    def test_update_weekday_defaults_success(self, client, db_session):
+        """PATCH updates weekday defaults successfully."""
+        # Create initial settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "08:00",
+                "weekday_0_end_time": "16:30",
+                "weekday_0_break_minutes": "30",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_update_sets_hx_trigger(self, client, db_session):
+        """PATCH sets HX-Trigger: settingsUpdated header."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "08:00",
+                "weekday_0_end_time": "16:30",
+                "weekday_0_break_minutes": "30",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+    def test_update_persists_to_database(self, client, db_session):
+        """PATCH persists changes to database."""
+        # Create initial settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "09:00",
+                "weekday_0_end_time": "17:00",
+                "weekday_0_break_minutes": "45",
+            },
+        )
+
+        # Refresh settings from database
+        db_session.refresh(settings)
+
+        # Verify changes persisted
+        assert settings.schedule_json is not None
+        assert settings.schedule_json["weekday_defaults"]["0"]["start_time"] == "09:00"
+        assert settings.schedule_json["weekday_defaults"]["0"]["end_time"] == "17:00"
+        assert settings.schedule_json["weekday_defaults"]["0"]["break_minutes"] == 45
+
+    def test_update_handles_partial_updates(self, client, db_session):
+        """PATCH handles partial updates (only update provided weekdays)."""
+        # Create settings with multiple weekdays configured
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            schedule_json={
+                "weekday_defaults": {
+                    "0": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},
+                    "1": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},
+                }
+            },
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        # Update only Monday (weekday 0)
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "09:00",
+                "weekday_0_end_time": "17:00",
+                "weekday_0_break_minutes": "45",
+            },
+        )
+
+        assert response.status_code == 200
+
+        # Refresh and verify
+        db_session.refresh(settings)
+        # Monday should be updated
+        assert settings.schedule_json["weekday_defaults"]["0"]["start_time"] == "09:00"
+        # Tuesday should remain unchanged
+        assert settings.schedule_json["weekday_defaults"]["1"]["start_time"] == "08:00"
+
+    def test_update_multiple_weekdays_at_once(self, client, db_session):
+        """PATCH updates multiple weekdays in single request."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "08:00",
+                "weekday_0_end_time": "16:30",
+                "weekday_0_break_minutes": "30",
+                "weekday_1_start_time": "08:00",
+                "weekday_1_end_time": "16:30",
+                "weekday_1_break_minutes": "30",
+                "weekday_2_start_time": "08:00",
+                "weekday_2_end_time": "16:30",
+                "weekday_2_break_minutes": "30",
+            },
+        )
+
+        assert response.status_code == 200
+
+        # Verify all three weekdays updated
+        db_session.refresh(settings)
+        assert settings.schedule_json["weekday_defaults"]["0"] is not None
+        assert settings.schedule_json["weekday_defaults"]["1"] is not None
+        assert settings.schedule_json["weekday_defaults"]["2"] is not None
+
+    def test_update_validates_time_format(self, client, db_session):
+        """PATCH validates time format (HH:MM)."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "invalid",  # Invalid time format
+                "weekday_0_end_time": "16:30",
+                "weekday_0_break_minutes": "30",
+            },
+        )
+
+        assert response.status_code == 422  # Validation error
+
+    def test_update_validates_break_minutes_range(self, client, db_session):
+        """PATCH validates break_minutes is within valid range."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "08:00",
+                "weekday_0_end_time": "16:30",
+                "weekday_0_break_minutes": "999",  # Invalid: too large
+            },
+        )
+
+        assert response.status_code == 422  # Validation error
+
+    def test_update_returns_updated_form_partial(self, client, db_session):
+        """PATCH returns updated form partial with new values."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "09:30",
+                "weekday_0_end_time": "18:00",
+                "weekday_0_break_minutes": "60",
+            },
+        )
+
+        assert response.status_code == 200
+        # Response should contain the updated values
+        assert "09:30" in response.text
+        assert "18:00" in response.text
+
+    def test_update_weekday_to_null_for_non_working_day(self, client, db_session):
+        """PATCH can set weekday to null (non-working day)."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            schedule_json={
+                "weekday_defaults": {
+                    "5": {"start_time": "08:00", "end_time": "16:30", "break_minutes": 30},  # Saturday working
+                }
+            },
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        # Update to make Saturday non-working by omitting data or sending empty values
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_5_enabled": "false",  # Indicate day is disabled
+            },
+        )
+
+        assert response.status_code == 200
+
+        db_session.refresh(settings)
+        # Saturday should now be null (non-working)
+        assert settings.schedule_json["weekday_defaults"]["5"] is None
+
+    def test_update_creates_settings_if_not_exist(self, client, db_session):
+        """PATCH creates settings record if none exists for user."""
+        # No existing settings - should create one
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_0_start_time": "08:00",
+                "weekday_0_end_time": "16:30",
+                "weekday_0_break_minutes": "30",
+            },
+        )
+
+        # May return 200 or 201 depending on implementation
+        assert response.status_code in [200, 201]
+
+    def test_update_requires_valid_weekday_keys(self, client, db_session):
+        """PATCH validates weekday keys are 0-6."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/weekday-defaults",
+            data={
+                "weekday_7_start_time": "08:00",  # Invalid: weekday must be 0-6
+                "weekday_7_end_time": "16:30",
+                "weekday_7_break_minutes": "30",
+            },
+        )
+
+        assert response.status_code == 422  # Validation error
