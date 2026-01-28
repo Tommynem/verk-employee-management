@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from source.api.context import render_template
 from source.api.dependencies import get_db
-from source.database.models import TimeEntry
-from source.services.data_transfer import ExportService, ImportService
+from source.database.models import TimeEntry, UserSettings
+from source.services.data_transfer import ExportService, ImportService, PDFExportService
 
 router = APIRouter(tags=["data-transfer"])
 
@@ -26,20 +26,29 @@ async def export_time_entries(
     month: Annotated[int, Query(ge=1, le=12)],
     year: Annotated[int, Query()],
     user_id: Annotated[int, Query()] = 1,
+    format: Annotated[str, Query()] = "csv",
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Export time entries for a month as CSV file.
+    """Export time entries for a month as CSV or PDF file.
 
     Args:
         request: FastAPI request object
         month: Month to export (1-12)
         year: Year to export
         user_id: User ID to export entries for (defaults to 1)
+        format: Export format, either 'csv' or 'pdf' (defaults to 'csv')
         db: Database session
 
     Returns:
-        StreamingResponse with CSV file attachment
+        StreamingResponse with CSV or PDF file attachment
+
+    Raises:
+        HTTPException: 422 if format is invalid
     """
+    # Validate format parameter
+    if format not in ("csv", "pdf"):
+        raise HTTPException(status_code=422, detail="Format muss 'csv' oder 'pdf' sein")
+
     # Query entries for the user and month
     entries = (
         db.query(TimeEntry)
@@ -52,11 +61,25 @@ async def export_time_entries(
         .all()
     )
 
-    # Use ExportService to generate CSV
-    service = ExportService()
-    result = service.export_entries(entries, user_id, year, month)
+    # Generate export based on format
+    if format == "pdf":
+        # Get user settings for PDF export
+        settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        if not settings:
+            # Create default settings if not found
+            from decimal import Decimal
 
-    # Return streaming response with CSV attachment
+            settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+
+        # Use PDF export service
+        pdf_service = PDFExportService()
+        result = await pdf_service.export_pdf(entries, settings, user_id, year, month)
+    else:
+        # Use CSV export service
+        csv_service = ExportService()
+        result = csv_service.export_entries(entries, user_id, year, month)
+
+    # Return streaming response with file attachment
     return StreamingResponse(
         io.BytesIO(result.content),
         media_type=result.content_type,

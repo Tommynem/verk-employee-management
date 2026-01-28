@@ -1,54 +1,73 @@
 # Current Session State
 
 **Date**: 2026-01-28
-**Status**: COMPLETE - Ideas Tracker Sprint
+**Status**: COMPLETE - Time Calculation Fixes + Tracking Settings
 **Branch**: main
 
 ## Session Summary
 
-Tackled remaining P2 items and clarified one ambiguous item from the ideas tracker.
+Fixed time tracking calculations to properly handle different absence types and added new settings for tracking start date and initial balance offset.
 
----
+## Changes Implemented
 
-## Features Implemented This Session
+### 1. Calculation Logic Fixes (`source/database/calculations.py`)
 
-| ID | Feature | Complexity | Notes |
-|----|---------|------------|-------|
-| #21 | Import VaWW modal components | Low | Replaced hx-confirm dialogs with styled daisyUI modals |
-| #08 | Draft indicator on months | Low | Shows "Entwurf"/"Abgegeben" badge in month header |
-| #12 | Notes quick-preview on hover | Low | Tooltip preview with icon indicator |
+| Absence Type | Before | After |
+|--------------|--------|-------|
+| **HOLIDAY** | target=normal, balance=0 | target=0, balance=0 (not a work day) |
+| **SICK** | No change | target=normal, balance=0 (EFZG compliant) |
+| **VACATION** | No change | target=normal, balance=0 |
+| **FLEX_TIME** | Already correct | actual-target (negative balance) |
 
----
+### 2. New UserSettings Fields
+
+Added to model and created migration:
+- `tracking_start_date: date | None` - Entries before this date are ignored
+- `initial_hours_offset: Decimal | None` - Starting flex time balance
+
+### 3. Service Layer Updates (`source/services/time_calculation.py`)
+
+- `period_balance()` - Respects tracking_start_date, adds initial_hours_offset
+- `monthly_summary()` - Uses initial_hours_offset as carryover_in for first tracked month
+
+### 4. Settings UI
+
+- New route: `PATCH /settings/tracking`
+- New template: `templates/partials/_settings_tracking.html`
+- Updated settings page to include tracking settings form
 
 ## Files Modified
 
-### Templates Created
-- `templates/components/_modal_confirm_delete.html` - Delete confirmation modal from VaWW
+| File | Changes |
+|------|---------|
+| `source/database/models.py` | Added tracking_start_date, initial_hours_offset fields |
+| `source/database/calculations.py` | HOLIDAY returns target=0 |
+| `source/services/time_calculation.py` | Tracking start date filtering, initial offset |
+| `source/api/routers/settings.py` | Added PATCH /settings/tracking route |
+| `templates/pages/settings.html` | Include tracking settings partial |
+| `templates/partials/_settings_tracking.html` | New tracking settings form |
+| `migrations/versions/e385869d5a44_*.py` | Schema migration |
 
-### Templates Modified
-- `templates/base.html` - Included modal component
-- `templates/partials/_row_time_entry_edit.html` - Modal integration for delete
-- `templates/partials/_detail_time_entry.html` - Modal integration for delete
-- `templates/partials/_browser_time_entries.html` - Draft indicator badge
-- `templates/partials/_row_time_entry.html` - Notes tooltip preview
+## Test Coverage
 
-### Backend Modified
-- `source/api/routers/time_entries.py` - Added has_draft_entries calculation
+- 17 calculation tests
+- 24 service layer tests
+- 27 settings tests (11 new for tracking)
+- **Total: 483 tests passing, 93% coverage**
 
----
+## Technical Notes
 
-## Test Status
+### German EFZG Compliance
+Sick days (Krankheit) must credit employees with their normal target hours per the Entgeltfortzahlungsgesetz - no "Minusstunden" may accumulate during illness.
 
-All 441 tests passing.
+### Calculation Behavior Summary
 
----
-
-## Remaining P3 Items (Future)
-
-| ID | Feature | Complexity | Assessment |
-|----|---------|------------|------------|
-| #05 | Annual overview (vacation/sick/overtime stats) | High | Requires new service, multiple queries, complex UI |
-| #07 | Undo last action with toast | Medium | Needs action history tracking, state management |
+```
+SICK:     target=normal, balance=0 (credited as worked per EFZG)
+HOLIDAY:  target=0, balance=0 (public holidays don't count as work days)
+VACATION: target=normal, balance=0 (paid leave, counts as worked)
+FLEX_TIME: target=normal, balance=negative (consumes accumulated hours)
+```
 
 ---
 
@@ -58,5 +77,6 @@ All 441 tests passing.
 |-----------|--------|
 | Database | Working (data/employees.db) |
 | Dev server | User managed (localhost:8000) |
-| Tests | 441 passing |
+| Tests | 483 passing |
+| Coverage | 93% |
 | Linting | Passing |

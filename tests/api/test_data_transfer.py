@@ -158,6 +158,86 @@ class TestExportEndpoint:
         # Filename should show user_id=1
         assert "zeiterfassung_1_2026-01.csv" in response.headers["content-disposition"]
 
+    def test_export_csv_format_explicitly(self, client, db_session):
+        """Export with format=csv explicitly specified returns CSV."""
+        # Create test entry
+        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/export?month=1&year=2026&format=csv")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/csv; charset=utf-8"
+        assert "zeiterfassung_1_2026-01.csv" in response.headers["content-disposition"]
+
+    def test_export_pdf_format(self, client, db_session):
+        """Export with format=pdf returns PDF."""
+        from tests.factories import UserSettingsFactory
+
+        # Create user settings for the user
+        settings = UserSettingsFactory.build(user_id=1)
+        db_session.add(settings)
+
+        # Create test entry
+        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/export?month=1&year=2026&format=pdf")
+
+        assert response.status_code == 200
+
+    def test_export_pdf_content_type(self, client, db_session):
+        """PDF format returns application/pdf content type."""
+        from tests.factories import UserSettingsFactory
+
+        # Create user settings for the user
+        settings = UserSettingsFactory.build(user_id=1)
+        db_session.add(settings)
+
+        # Create test entry
+        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/export?month=1&year=2026&format=pdf")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+
+    def test_export_pdf_filename(self, client, db_session):
+        """PDF has correct filename format with .pdf extension."""
+        from tests.factories import UserSettingsFactory
+
+        # Create user settings for the user
+        settings = UserSettingsFactory.build(user_id=1)
+        db_session.add(settings)
+
+        # Create test entry
+        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/export?month=1&year=2026&format=pdf")
+
+        assert response.status_code == 200
+        assert "content-disposition" in response.headers
+        # Filename format: zeiterfassung_{user_id}_{YYYY-MM}.pdf
+        assert "zeiterfassung_1_2026-01.pdf" in response.headers["content-disposition"]
+        assert "attachment" in response.headers["content-disposition"]
+
+    def test_export_invalid_format(self, client, db_session):
+        """Invalid format returns 422 error."""
+        # Create test entry
+        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/export?month=1&year=2026&format=invalid")
+
+        assert response.status_code == 422
+
 
 class TestImportEndpoint:
     """Test POST /time-entries/import CSV import endpoint.

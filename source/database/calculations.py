@@ -55,6 +55,7 @@ def target_hours(entry: TimeEntry, settings: UserSettings) -> Decimal:
         Decimal target hours for the day (rounded to 2 decimal places)
         Weekdays (Mon-Fri): weekly_target_hours / 5
         Weekends (Sat-Sun): 0.00
+        Public holidays (HOLIDAY): 0.00
 
     Example:
         32h/week on Wednesday = 6.40 hours/day
@@ -67,7 +68,12 @@ def target_hours(entry: TimeEntry, settings: UserSettings) -> Decimal:
     if weekday >= 5:
         return Decimal("0.00")
 
+    # Public holidays (Feiertag) are not work days - target = 0
+    if entry.absence_type == AbsenceType.HOLIDAY:
+        return Decimal("0.00")
+
     # Calculate daily target (weekly / 5 workdays)
+    # Note: SICK gets normal target per German EFZG (credited as worked)
     daily_target = settings.weekly_target_hours / Decimal("5")
 
     # Round to 2 decimal places
@@ -83,18 +89,21 @@ def balance(entry: TimeEntry, settings: UserSettings) -> Decimal:
 
     Returns:
         Decimal balance (actual - target) rounded to 2 decimal places
-        VACATION, SICK, HOLIDAY count as target hours worked (balance = 0.00)
+        VACATION and SICK: neutral (paid leave/illness counts as target met per EFZG)
 
     Example:
         Worked 10h with 6.4h target = +3.60
         Worked 4h with 6.4h target = -2.40
         Vacation day = 0.00 (neutral)
     """
-    # Special case: absences count as target hours worked
-    if entry.absence_type in (AbsenceType.VACATION, AbsenceType.SICK, AbsenceType.HOLIDAY):
+    # VACATION and SICK: neutral (paid leave/illness counts as target met per EFZG)
+    if entry.absence_type in (AbsenceType.VACATION, AbsenceType.SICK):
         return Decimal("0.00")
 
-    # Calculate actual vs target
+    # All other types: actual - target
+    # HOLIDAY: target=0, actual=0, so balance=0 (calculated, not hardcoded)
+    # FLEX_TIME: target=normal, actual=0, so balance=negative
+    # NONE: normal calculation
     actual = actual_hours(entry)
     target = target_hours(entry, settings)
 

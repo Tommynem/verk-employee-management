@@ -93,6 +93,8 @@ class UserSettingsFactory(factory.Factory):
     weekly_target_hours = Decimal("32.00")
     carryover_hours = None
     schedule_json = None
+    tracking_start_date = None
+    initial_hours_offset = None
     created_at = factory.LazyFunction(datetime.now)
     updated_at = factory.LazyFunction(datetime.now)
 

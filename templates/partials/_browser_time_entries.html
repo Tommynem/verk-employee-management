@@ -71,12 +71,21 @@
 
     {# Export/Import buttons #}
     <div class="ml-auto flex items-center gap-2">
-        <a href="/time-entries/export?month={{ month }}&year={{ year }}"
+        {# PDF Export #}
+        <a href="/time-entries/export?month={{ month }}&year={{ year }}&format=pdf"
+           class="btn btn-sm btn-outline gap-2"
+           download>
+            {{ icon("file-text", class="w-4 h-4") }}
+            PDF Export
+        </a>
+        {# CSV Export #}
+        <a href="/time-entries/export?month={{ month }}&year={{ year }}&format=csv"
            class="btn btn-sm btn-outline gap-2"
            download>
             {{ icon("download", class="w-4 h-4") }}
             CSV Export
         </a>
+        {# Import #}
         <button class="btn btn-sm btn-outline gap-2"
                 onclick="document.getElementById('import-modal').showModal()">
             {{ icon("upload", class="w-4 h-4") }}

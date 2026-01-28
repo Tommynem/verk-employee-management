@@ -1,0 +1,115 @@
+<div class="card bg-base-100 shadow-md border border-base-300 rounded-lg mb-6">
+    <div class="card-body">
+        <h2 class="card-title mb-4">Zeiterfassung Einstellungen</h2>
+
+        <form id="tracking-settings-form"
+              hx-patch="/settings/tracking"
+              hx-target="#settings-tracking-content"
+              hx-swap="innerHTML">
+
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">Wochenstunden (Soll)</span>
+                </label>
+                <input type="text"
+                       id="weekly_target_hours"
+                       name="weekly_target_hours"
+                       value="{{ (settings.weekly_target_hours | string | replace('.', ',')) if settings and settings.weekly_target_hours is not none else '' }}"
+                       pattern="^\d+,?\d*$"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="40,00"
+                       required />
+                <label class="label">
+                    <span class="label-text-alt">Vereinbarte Arbeitszeit pro Woche (0-80 Stunden)</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">Erfassungsbeginn</span>
+                </label>
+                <input type="text"
+                       id="tracking_start_date"
+                       name="tracking_start_date"
+                       value="{{ settings.tracking_start_date.strftime('%d.%m.%Y') if settings and settings.tracking_start_date else '' }}"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="DD.MM.YYYY" />
+                <label class="label">
+                    <span class="label-text-alt">Zeiteinträge vor diesem Datum werden ignoriert</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">Anfangssaldo (Stunden)</span>
+                </label>
+                <input type="text"
+                       id="initial_hours_offset"
+                       name="initial_hours_offset"
+                       value="{{ (settings.initial_hours_offset | string | replace('.', ',')) if settings and settings.initial_hours_offset is not none else '' }}"
+                       pattern="^-?\d+,?\d*$"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="0,00" />
+                <label class="label">
+                    <span class="label-text-alt">Überstundensaldo am Erfassungsbeginn</span>
+                </label>
+            </div>
+
+            <div class="flex justify-end mt-6">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Flatpickr CSS and JS -->
+<link rel="stylesheet" href="/static/vendor/flatpickr/flatpickr.min.css">
+<script src="/static/vendor/flatpickr/flatpickr.min.js"></script>
+<script src="/static/vendor/flatpickr/l10n/de.js"></script>
+
+<script>
+(function() {
+    // Initialize flatpickr with German locale
+    flatpickr("#tracking_start_date", {
+        locale: "de",
+        dateFormat: "d.m.Y",
+        allowInput: true
+    });
+
+    // Handle German number format conversion on form submit
+    const form = document.getElementById('tracking-settings-form');
+
+    form.addEventListener('htmx:configRequest', function(event) {
+        // Convert German decimal format to standard format before sending
+        const weeklyHours = document.getElementById('weekly_target_hours');
+        const initialOffset = document.getElementById('initial_hours_offset');
+        const trackingDate = document.getElementById('tracking_start_date');
+
+        // Store original values for restoration after submit
+        const originalWeeklyHours = weeklyHours.value;
+        const originalInitialOffset = initialOffset.value;
+        const originalTrackingDate = trackingDate.value;
+
+        // Convert comma to dot for numeric fields
+        if (weeklyHours.value) {
+            weeklyHours.value = weeklyHours.value.replace(',', '.');
+        }
+        if (initialOffset.value) {
+            initialOffset.value = initialOffset.value.replace(',', '.');
+        }
+
+        // Convert DD.MM.YYYY to YYYY-MM-DD for date field
+        if (trackingDate.value && trackingDate.value.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) {
+            const parts = trackingDate.value.split('.');
+            trackingDate.value = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+
+        // Restore original values after HTMX reads them
+        setTimeout(function() {
+            weeklyHours.value = originalWeeklyHours;
+            initialOffset.value = originalInitialOffset;
+            trackingDate.value = originalTrackingDate;
+        }, 0);
+    });
+})();
+</script>

@@ -75,6 +75,10 @@ class UserSettings(Base):
     carryover_hours: Decimal | None = Column(Numeric(6, 2), nullable=True)
     schedule_json: dict | None = Column(JSON, nullable=True)
 
+    # Tracking configuration
+    tracking_start_date: date | None = Column(Date, nullable=True)
+    initial_hours_offset: Decimal | None = Column(Numeric(6, 2), nullable=True)
+
     # Timestamps
     created_at: datetime = Column(DateTime, default=func.now(), nullable=False)
     updated_at: datetime = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)

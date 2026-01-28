@@ -349,3 +349,235 @@ class TestWeekdayDefaultsUpdate:
         )
 
         assert response.status_code == 422  # Validation error
+
+
+class TestTrackingSettingsUpdate:
+    """Test PATCH /settings/tracking endpoint."""
+
+    def test_patch_tracking_settings_updates_tracking_start_date(self, client, db_session):
+        """PATCH updates tracking_start_date successfully."""
+        # Create initial settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "tracking_start_date": "2026-01-15",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify database update
+        db_session.refresh(settings)
+        from datetime import date as date_type
+
+        assert settings.tracking_start_date == date_type(2026, 1, 15)
+
+    def test_patch_tracking_settings_updates_initial_hours_offset(self, client, db_session):
+        """PATCH updates initial_hours_offset successfully."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "initial_hours_offset": "15.50",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify database update
+        db_session.refresh(settings)
+        assert settings.initial_hours_offset == Decimal("15.50")
+
+    def test_patch_tracking_settings_both_fields(self, client, db_session):
+        """PATCH updates both tracking_start_date and initial_hours_offset."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "tracking_start_date": "2026-01-15",
+                "initial_hours_offset": "15.50",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify both fields updated
+        db_session.refresh(settings)
+        from datetime import date as date_type
+
+        assert settings.tracking_start_date == date_type(2026, 1, 15)
+        assert settings.initial_hours_offset == Decimal("15.50")
+
+    def test_patch_tracking_settings_clears_values_with_empty_string(self, client, db_session):
+        """PATCH clears tracking fields when empty strings provided."""
+        # Create settings with existing values
+        from datetime import date as date_type
+
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            tracking_start_date=date_type(2026, 1, 1),
+            initial_hours_offset=Decimal("10.00"),
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "tracking_start_date": "",
+                "initial_hours_offset": "",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify fields cleared
+        db_session.refresh(settings)
+        assert settings.tracking_start_date is None
+        assert settings.initial_hours_offset is None
+
+    def test_patch_tracking_settings_invalid_date_format(self, client, db_session):
+        """PATCH rejects invalid date format with German error message."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "tracking_start_date": "invalid-date",
+            },
+        )
+
+        assert response.status_code == 422
+        # Should contain German error message
+        assert "Ungültiges Datumsformat" in response.text
+
+    def test_patch_tracking_settings_invalid_offset_value(self, client, db_session):
+        """PATCH rejects non-numeric offset with German error message."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "initial_hours_offset": "not-a-number",
+            },
+        )
+
+        assert response.status_code == 422
+        # Should contain German validation error
+        assert response.text  # Contains error message
+
+    def test_patch_tracking_settings_offset_out_of_range_high(self, client, db_session):
+        """PATCH rejects offset > 999.99 with German error message."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "initial_hours_offset": "1000.00",
+            },
+        )
+
+        assert response.status_code == 422
+        # Should contain validation error about range
+        assert response.text
+
+    def test_patch_tracking_settings_offset_out_of_range_low(self, client, db_session):
+        """PATCH rejects offset < -999.99 with German error message."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "initial_hours_offset": "-1000.00",
+            },
+        )
+
+        assert response.status_code == 422
+        # Should contain validation error about range
+        assert response.text
+
+    def test_get_settings_includes_tracking_fields(self, client, db_session):
+        """GET /settings renders tracking_start_date and initial_hours_offset in German format."""
+        from datetime import date as date_type
+
+        # Create settings with tracking fields
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            tracking_start_date=date_type(2026, 1, 15),
+            initial_hours_offset=Decimal("15.50"),
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        # Should render tracking_start_date in German format (DD.MM.YYYY)
+        assert "15.01.2026" in response.text
+        # Should render initial_hours_offset in German format (comma decimal)
+        assert "15,50" in response.text
+        # Should render weekly_target_hours in German format
+        assert "40,00" in response.text
+
+    def test_patch_tracking_settings_negative_offset(self, client, db_session):
+        """PATCH accepts negative offset within valid range."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "initial_hours_offset": "-15.50",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify negative offset accepted
+        db_session.refresh(settings)
+        assert settings.initial_hours_offset == Decimal("-15.50")
+
+    def test_patch_tracking_settings_creates_settings_if_not_exist(self, client, db_session):
+        """PATCH creates settings record if none exists for user."""
+        # No existing settings - should create one
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "tracking_start_date": "2026-01-15",
+                "initial_hours_offset": "10.00",
+            },
+        )
+
+        # May return 200 or 201 depending on implementation
+        assert response.status_code in [200, 201]

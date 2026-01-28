@@ -3,6 +3,9 @@
 Routes for user settings including weekday defaults.
 """
 
+from datetime import date
+from decimal import Decimal, InvalidOperation
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -145,6 +148,92 @@ async def update_weekday_defaults(
     db.refresh(settings)
 
     html = render_template(request, "partials/_settings_weekday_defaults.html", settings=settings)
+    response = HTMLResponse(content=html, status_code=200)
+    response.headers["HX-Trigger"] = "settingsUpdated"
+    return response
+
+
+@router.patch("/tracking", response_class=HTMLResponse)
+async def update_tracking_settings(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> HTMLResponse:
+    """Update tracking settings including weekly target hours.
+
+    Handles weekly_target_hours, tracking_start_date, and initial_hours_offset.
+    Supports German number format (comma as decimal separator) for numeric fields.
+    Supports German date format (DD.MM.YYYY) with fallback to ISO format.
+
+    Args:
+        request: FastAPI request object
+        db: Database session
+        user_id: Current user ID
+
+    Returns:
+        HTML response with tracking settings form partial
+
+    Raises:
+        HTTPException: 422 if validation fails
+    """
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+
+    # Get or create settings
+    if not settings:
+        settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+        db.add(settings)
+
+    form_data = await request.form()
+
+    # Parse weekly_target_hours (German format: comma as decimal separator)
+    weekly_hours_str = form_data.get("weekly_target_hours", "")
+    if weekly_hours_str:
+        try:
+            # Convert German decimal format (comma) to standard (dot)
+            weekly_hours_str = str(weekly_hours_str).replace(",", ".")
+            weekly_hours = Decimal(weekly_hours_str)
+            if weekly_hours < Decimal("0") or weekly_hours > Decimal("80"):
+                raise HTTPException(status_code=422, detail="Wochenstunden müssen zwischen 0 und 80 liegen")
+            settings.weekly_target_hours = weekly_hours
+        except InvalidOperation as e:
+            raise HTTPException(status_code=422, detail="Ungültige Wochenstunden") from e
+
+    # Parse tracking_start_date (German format: DD.MM.YYYY)
+    tracking_start_str = form_data.get("tracking_start_date", "")
+    if tracking_start_str:
+        try:
+            # Try German date format DD.MM.YYYY first
+            from datetime import datetime
+
+            settings.tracking_start_date = datetime.strptime(str(tracking_start_str), "%d.%m.%Y").date()
+        except ValueError:
+            # Fallback to ISO format
+            try:
+                settings.tracking_start_date = date.fromisoformat(str(tracking_start_str))
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail="Ungültiges Datumsformat") from e
+    else:
+        settings.tracking_start_date = None
+
+    # Parse initial_hours_offset (German format)
+    offset_str = form_data.get("initial_hours_offset", "")
+    if offset_str:
+        try:
+            # Convert German decimal format
+            offset_str = str(offset_str).replace(",", ".")
+            offset = Decimal(offset_str)
+            if offset < Decimal("-999.99") or offset > Decimal("999.99"):
+                raise HTTPException(status_code=422, detail="Saldo muss zwischen -999,99 und 999,99 liegen")
+            settings.initial_hours_offset = offset
+        except InvalidOperation as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zahlenwert") from e
+    else:
+        settings.initial_hours_offset = None
+
+    db.commit()
+    db.refresh(settings)
+
+    html = render_template(request, "partials/_settings_tracking.html", settings=settings)
     response = HTMLResponse(content=html, status_code=200)
     response.headers["HX-Trigger"] = "settingsUpdated"
     return response

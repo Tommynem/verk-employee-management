@@ -10,6 +10,7 @@ from source.services.data_transfer.dataclasses import (
 )
 from source.services.data_transfer.export_service import ExportService
 from source.services.data_transfer.import_service import ImportService
+from source.services.data_transfer.pdf_export_service import PDFExportService
 
 __all__ = [
     "FormatHandler",
@@ -20,4 +21,5 @@ __all__ = [
     "ExportResult",
     "ExportService",
     "ImportService",
+    "PDFExportService",
 ]

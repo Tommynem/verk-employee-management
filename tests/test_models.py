@@ -264,3 +264,35 @@ class TestUserSettingsModel:
         assert settings.updated_at is not None
         assert isinstance(settings.created_at, type(settings.created_at))
         assert isinstance(settings.updated_at, type(settings.updated_at))
+
+    @pytest.mark.database
+    def test_user_settings_with_tracking_configuration(self, db_session):
+        """Test creating user settings with tracking start date and initial offset."""
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            tracking_start_date=date(2026, 1, 1),
+            initial_hours_offset=Decimal("10.50"),
+        )
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        assert settings.id is not None
+        assert settings.user_id == 1
+        assert settings.tracking_start_date == date(2026, 1, 1)
+        assert settings.initial_hours_offset == Decimal("10.50")
+
+    @pytest.mark.database
+    def test_user_settings_tracking_fields_default_none(self, db_session):
+        """Test tracking configuration fields default to None."""
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+        )
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        assert settings.tracking_start_date is None
+        assert settings.initial_hours_offset is None

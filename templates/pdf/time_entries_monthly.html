@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zeiterfassung {{ month_name }} {{ year }}</title>
+    <style>
+        /* Page setup for PDF rendering */
+        @page {
+            size: A4 landscape;
+            margin: 15mm;
+        }
+
+        /* Base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            color: #1e2939;
+            line-height: 1.4;
+        }
+
+        /* Header section */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f68d0f;
+        }
+
+        .header img {
+            height: 40px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1e2939;
+            margin: 0;
+        }
+
+        /* Table styles */
+        .time-entries-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            table-layout: fixed;
+        }
+
+        .time-entries-table thead {
+            background-color: #1e2939;
+            color: #ffffff;
+        }
+
+        .time-entries-table th {
+            padding: 8px 6px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 9px;
+            border: 1px solid #1e2939;
+        }
+
+        .time-entries-table td {
+            padding: 6px;
+            border: 1px solid #e5e7eb;
+            vertical-align: top;
+        }
+
+        .time-entries-table tbody tr:nth-child(even) {
+            background-color: #f9fafb;
+        }
+
+        .time-entries-table tbody tr:nth-child(odd) {
+            background-color: #ffffff;
+        }
+
+        /* Column widths */
+        .col-date { width: 9%; }
+        .col-start { width: 7%; text-align: center; }
+        .col-end { width: 7%; text-align: center; }
+        .col-break { width: 7%; text-align: center; }
+        .col-actual { width: 9%; text-align: right; }
+        .col-target { width: 9%; text-align: right; }
+        .col-balance { width: 9%; text-align: right; }
+        .col-notes { width: 28%; }
+        .col-absence { width: 15%; }
+
+        /* Monospace for numbers and times */
+        .mono {
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+        }
+
+        /* Balance colors */
+        .balance-positive {
+            color: #00a63e;
+            font-weight: bold;
+        }
+
+        .balance-negative {
+            color: #e7000b;
+            font-weight: bold;
+        }
+
+        .balance-zero {
+            color: #6b7280;
+        }
+
+        /* Absence badge */
+        .absence-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 8px;
+            font-weight: bold;
+        }
+
+        .absence-vacation {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+
+        .absence-sick {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+
+        .absence-holiday {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+
+        .absence-flex {
+            background-color: #e0e7ff;
+            color: #3730a3;
+        }
+
+        /* Summary section */
+        .summary {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f3f4f6;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .summary h2 {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #1e2939;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .summary-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .summary-label {
+            font-size: 10px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .summary-value {
+            font-size: 16px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+
+        .summary-value.positive {
+            color: #00a63e;
+        }
+
+        .summary-value.negative {
+            color: #e7000b;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            font-size: 8px;
+            color: #9ca3af;
+        }
+
+        /* Weekend row styling */
+        .weekend-row {
+            background-color: #f3f4f6 !important;
+        }
+
+        /* Empty cell styling */
+        .empty-cell {
+            color: #9ca3af;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <img src="{{ logo_data_uri }}" alt="Verk Logo">
+        <h1>Zeiterfassung {{ month_name }} {{ year }}</h1>
+    </div>
+
+    <!-- Time Entries Table -->
+    <table class="time-entries-table">
+        <thead>
+            <tr>
+                <th class="col-date">Tag</th>
+                <th class="col-start">Ankunft</th>
+                <th class="col-end">Ende</th>
+                <th class="col-break">Pausen</th>
+                <th class="col-actual">Arbeitsstunden Real</th>
+                <th class="col-target">Arbeitsstunden Soll</th>
+                <th class="col-balance">+/-</th>
+                <th class="col-notes">Notizen</th>
+                <th class="col-absence">Abwesenheit</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in entries %}
+            <tr{% if entry.weekday in ['Sa', 'So'] %} class="weekend-row"{% endif %}>
+                <!-- Date column -->
+                <td class="col-date">
+                    {{ entry.work_date.strftime('%d.%m.%y') }} ({{ entry.weekday }})
+                </td>
+
+                <!-- Start time -->
+                <td class="col-start mono">
+                    {% if entry.start_time %}
+                        {{ entry.start_time.strftime('%H:%M') }}
+                    {% else %}
+                        <span class="empty-cell">-</span>
+                    {% endif %}
+                </td>
+
+                <!-- End time -->
+                <td class="col-end mono">
+                    {% if entry.end_time %}
+                        {{ entry.end_time.strftime('%H:%M') }}
+                    {% else %}
+                        <span class="empty-cell">-</span>
+                    {% endif %}
+                </td>
+
+                <!-- Break minutes -->
+                <td class="col-break mono">
+                    {% if entry.break_minutes %}
+                        {{ entry.break_minutes }} min
+                    {% else %}
+                        <span class="empty-cell">-</span>
+                    {% endif %}
+                </td>
+
+                <!-- Actual hours -->
+                <td class="col-actual mono">
+                    {{ "%.2f"|format(entry.actual_hours|float) }}h
+                </td>
+
+                <!-- Target hours -->
+                <td class="col-target mono">
+                    {{ "%.2f"|format(entry.target_hours|float) }}h
+                </td>
+
+                <!-- Balance -->
+                <td class="col-balance mono">
+                    {% set balance_float = entry.balance|float %}
+                    {% if balance_float > 0 %}
+                        <span class="balance-positive">+{{ "%.2f"|format(balance_float) }}h</span>
+                    {% elif balance_float < 0 %}
+                        <span class="balance-negative">{{ "%.2f"|format(balance_float) }}h</span>
+                    {% else %}
+                        <span class="balance-zero">{{ "%.2f"|format(balance_float) }}h</span>
+                    {% endif %}
+                </td>
+
+                <!-- Notes -->
+                <td class="col-notes">
+                    {% if entry.notes %}
+                        {{ entry.notes }}
+                    {% else %}
+                        <span class="empty-cell">-</span>
+                    {% endif %}
+                </td>
+
+                <!-- Absence type -->
+                <td class="col-absence">
+                    {% if entry.absence_label %}
+                        {% set absence_type = entry.absence_label.lower() %}
+                        <span class="absence-badge
+                            {% if 'urlaub' in absence_type %}absence-vacation
+                            {% elif 'krank' in absence_type %}absence-sick
+                            {% elif 'feiertag' in absence_type %}absence-holiday
+                            {% elif 'gleitzeit' in absence_type %}absence-flex
+                            {% endif %}">
+                            {{ entry.absence_label }}
+                        </span>
+                    {% else %}
+                        <span class="empty-cell">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Summary Section -->
+    <div class="summary">
+        <h2>Monatsübersicht</h2>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-label">Monatssaldo (Arbeitsstunden Real)</div>
+                <div class="summary-value">{{ "%.2f"|format(summary.total_actual|float) }}h</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Sollstunden</div>
+                <div class="summary-value">{{ "%.2f"|format(summary.total_target|float) }}h</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Endsaldo</div>
+                <div class="summary-value {% if summary.carryover_out|float >= 0 %}positive{% else %}negative{% endif %}">
+                    {% if summary.carryover_out|float >= 0 %}+{% endif %}{{ "%.2f"|format(summary.carryover_out|float) }}h
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        Generiert am {{ now().strftime('%d.%m.%Y um %H:%M') }} Uhr
+    </div>
+</body>
+</html>

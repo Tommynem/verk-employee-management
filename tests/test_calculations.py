@@ -100,6 +100,62 @@ class TestTargetHours:
         )
         assert target_hours(entry, settings) == Decimal("0.00")
 
+    @pytest.mark.unit
+    def test_target_hours_holiday_returns_zero(self):
+        """HOLIDAY has 0 target (not a work day)."""
+        entry = TimeEntry(
+            work_date=date(2026, 1, 14),  # Wednesday
+            absence_type=AbsenceType.HOLIDAY,
+            status=RecordStatus.DRAFT,
+        )
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+        )
+        assert target_hours(entry, settings) == Decimal("0.00")
+
+    @pytest.mark.unit
+    def test_target_hours_sick_returns_normal(self):
+        """SICK has normal target (EFZG: credited as worked)."""
+        entry = TimeEntry(
+            work_date=date(2026, 1, 14),  # Wednesday
+            absence_type=AbsenceType.SICK,
+            status=RecordStatus.DRAFT,
+        )
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+        )
+        assert target_hours(entry, settings) == Decimal("6.40")
+
+    @pytest.mark.unit
+    def test_target_hours_vacation_returns_normal(self):
+        """VACATION has normal target."""
+        entry = TimeEntry(
+            work_date=date(2026, 1, 14),  # Wednesday
+            absence_type=AbsenceType.VACATION,
+            status=RecordStatus.DRAFT,
+        )
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+        )
+        assert target_hours(entry, settings) == Decimal("6.40")
+
+    @pytest.mark.unit
+    def test_target_hours_flex_time_returns_normal(self):
+        """FLEX_TIME has normal target."""
+        entry = TimeEntry(
+            work_date=date(2026, 1, 14),  # Wednesday
+            absence_type=AbsenceType.FLEX_TIME,
+            status=RecordStatus.DRAFT,
+        )
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+        )
+        assert target_hours(entry, settings) == Decimal("6.40")
+
 
 class TestBalance:
     @pytest.mark.unit
@@ -163,8 +219,8 @@ class TestBalance:
         assert balance(entry, settings) == Decimal("0.00")
 
     @pytest.mark.unit
-    def test_balance_holiday_counts_as_worked(self):
-        """Holiday = 0 balance (neutral)."""
+    def test_balance_holiday_is_zero(self):
+        """HOLIDAY is neutral (target=0, actual=0, so balance=0)."""
         entry = TimeEntry(
             work_date=date(2026, 1, 14),  # Wednesday
             absence_type=AbsenceType.HOLIDAY,
@@ -175,3 +231,21 @@ class TestBalance:
             weekly_target_hours=Decimal("32.00"),
         )
         assert balance(entry, settings) == Decimal("0.00")
+
+    @pytest.mark.unit
+    def test_balance_flex_time_is_negative(self):
+        """FLEX_TIME with no hours worked creates negative balance."""
+        entry = TimeEntry(
+            work_date=date(2026, 1, 14),  # Wednesday
+            absence_type=AbsenceType.FLEX_TIME,
+            start_time=None,
+            end_time=None,
+            break_minutes=0,
+            status=RecordStatus.DRAFT,
+        )
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+        )
+        # actual=0, target=6.40, balance=-6.40
+        assert balance(entry, settings) == Decimal("-6.40")
