@@ -49,8 +49,16 @@
             aria-label="Vorheriger Monat">
         {{ icon("chevron-left", class="w-5 h-5") }}
     </button>
-    <h2 class="text-2xl font-medium text-base-content">
+    <h2 class="text-2xl font-medium text-base-content flex items-center gap-2">
         {{ month_name }} {{ year }}
+        {# Month status indicator - only if there are entries #}
+        {% if has_draft_entries is not none %}
+            {% if has_draft_entries %}
+                <span class="badge badge-ghost badge-sm">Entwurf</span>
+            {% else %}
+                <span class="badge badge-primary badge-sm">Abgegeben</span>
+            {% endif %}
+        {% endif %}
     </h2>
     <button class="btn btn-ghost btn-square"
             hx-get="/time-entries?month={{ next_month }}&year={{ next_year }}"
@@ -134,7 +142,7 @@
                     <th class="font-bold text-sm">+/-</th>
                     <th class="font-bold text-sm">Abwesenheit / Bemerkung</th>
                     <th class="font-bold text-sm text-center">Abwesenheit</th>
-                    <th class="font-bold text-sm w-12"></th>
+                    <th class="font-bold text-sm w-32"></th>
                 </tr>
             </thead>
             <tbody>
