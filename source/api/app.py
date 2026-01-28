@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 # Import routers
-from source.api.routers import settings, summaries, time_entries
+from source.api.routers import data_transfer, settings, summaries, time_entries
 
 app = FastAPI(
     title="Verk Zeiterfassung",
@@ -61,6 +61,7 @@ async def server_error_handler(request: Request, exc: Exception) -> HTMLResponse
 
 
 # Include routers
+app.include_router(data_transfer.router, prefix="/time-entries")
 app.include_router(time_entries.router)
 app.include_router(summaries.router)
 app.include_router(settings.router)
