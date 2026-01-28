@@ -4,20 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Verk Zeiterfassung{% endblock %}</title>
+    <!-- Favicons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="manifest" href="/static/site.webmanifest">
+    <!-- Styles -->
     <link rel="stylesheet" href="/static/css/output.css">
+    <link rel="stylesheet" href="/static/css/main.css">
     <script src="/static/vendor/htmx/htmx.min.js"></script>
     {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen bg-base-200">
+<body class="min-h-screen bg-base-200" style="font-family: 'Open Sans', ui-sans-serif, system-ui, sans-serif;">
     <!-- Navigation -->
     <nav class="navbar bg-gradient-to-r from-brand-dark-start to-brand-dark-end text-white shadow-lg">
-        <div class="flex-1">
-            <a class="btn btn-ghost normal-case text-xl" href="/">Verk Zeiterfassung</a>
+        <div class="flex-1 flex items-center gap-4">
+            <a class="btn btn-ghost normal-case" href="/time-entries">
+                <img src="/static/logo.png" alt="VERK Logo" class="h-10 w-auto">
+            </a>
         </div>
         <div class="flex-none">
             <ul class="menu menu-horizontal px-1">
-                <li><a href="/">Dashboard</a></li>
-                <li><a href="/employees">Mitarbeiter</a></li>
                 <li><a href="/time-entries">Zeiterfassung</a></li>
                 <li><a href="/settings">Einstellungen</a></li>
             </ul>
@@ -59,6 +66,9 @@
         }
     });
     </script>
+
+    <!-- Main application JavaScript -->
+    <script src="/static/js/app.js"></script>
 
     {% block scripts %}{% endblock %}
 </body>

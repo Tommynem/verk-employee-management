@@ -26,21 +26,49 @@ export default {
     themes: [
       {
         verk: {
-          "primary": "#f68d0f",           // Brand orange
-          "primary-content": "#ffffff",   // White text on primary
-          "secondary": "#1e2939",         // Brand dark
-          "secondary-content": "#ffffff",
-          "accent": "#e67e00",            // Brand orange dark
-          "neutral": "#1f2937",
-          "base-100": "#ffffff",
-          "base-200": "#f3f4f6",
-          "base-300": "#e5e7eb",
-          "info": "#3b82f6",
-          "success": "#00a63e",           // From design tokens
-          "warning": "#bb4d00",           // From design tokens
-          "error": "#e7000b",             // From design tokens
+          // VaWW Primary Orange - oklch format
+          primary: "oklch(0.74 0.17 60)",
+          "primary-content": "oklch(1 0 0)",
+
+          // Secondary
+          secondary: "oklch(0.55 0.01 260)",
+          "secondary-content": "oklch(1 0 0)",
+
+          // Accent
+          accent: "oklch(0.65 0.20 290)",
+          "accent-content": "oklch(1 0 0)",
+
+          // Neutral base colors (light theme)
+          "base-100": "oklch(0.97 0.005 260)",
+          "base-200": "oklch(0.92 0.008 260)",
+          "base-300": "oklch(0.82 0.012 260)",
+          "base-content": "oklch(0.20 0.01 260)",
+
+          // Semantic colors
+          success: "oklch(0.55 0.20 145)",
+          "success-content": "oklch(1 0 0)",
+          warning: "oklch(0.70 0.15 80)",
+          "warning-content": "oklch(0.15 0 0)",
+          error: "oklch(0.55 0.24 25)",
+          "error-content": "oklch(1 0 0)",
+          info: "oklch(0.55 0.20 240)",
+          "info-content": "oklch(1 0 0)",
+
+          // Neutral
+          neutral: "oklch(0.55 0.01 260)",
+          "neutral-content": "oklch(1 0 0)",
+
+          // UI styling
+          "--rounded-box": "0.5rem",
+          "--rounded-btn": "0.25rem",
+          "--rounded-badge": "1rem",
         },
       },
     ],
+    darkTheme: false,
+    base: true,
+    styled: true,
+    utils: true,
+    logs: false,
   },
 }

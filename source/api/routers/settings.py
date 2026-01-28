@@ -10,12 +10,10 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from source.api.context import render_template
 from source.api.dependencies import get_current_user_id, get_db
+from source.core.i18n import GERMAN_DAYS
 from source.database.models import UserSettings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
-
-# German day names for reference
-GERMAN_DAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
 
 @router.get("", response_class=HTMLResponse)

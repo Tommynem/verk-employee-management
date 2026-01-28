@@ -74,15 +74,3 @@
         </form>
     </div>
 </div>
-
-<script>
-function toggleWeekdayInputs(weekday, enabled) {
-    const inputs = document.querySelectorAll(`[name^="weekday_${weekday}_"]:not([name$="_enabled"])`);
-    inputs.forEach(input => {
-        input.disabled = !enabled;
-        if (!enabled) {
-            input.value = '';
-        }
-    });
-}
-</script>
