@@ -16,7 +16,7 @@
     <script src="/static/vendor/htmx/htmx.min.js"></script>
     {% block head %}{% endblock %}
 </head>
-<body class="h-screen flex flex-col antialiased overflow-hidden font-sans" style="font-family: 'Open Sans', ui-sans-serif, system-ui, sans-serif;">
+<body class="min-h-screen flex flex-col antialiased font-sans" style="font-family: 'Open Sans', ui-sans-serif, system-ui, sans-serif;">
     <!-- Header with brand gradient -->
     <header class="bg-gradient-to-r from-brand-dark-start to-brand-dark-end shadow-lg sticky top-0 z-50">
         <div class="navbar px-4">
@@ -86,5 +86,8 @@
     <script src="/static/js/app.js"></script>
 
     {% block scripts %}{% endblock %}
+
+    <!-- Global Modal Components -->
+    {% include "components/_modal_confirm_delete.html" %}
 </body>
 </html>
