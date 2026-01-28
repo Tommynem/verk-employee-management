@@ -1,0 +1,203 @@
+{% from "macros/_icons.html" import icon %}
+{# Delete Confirmation Modal Component
+   Reusable modal for warning users about permanent deletion actions.
+   Used app-wide when deleting entities (invoices, cash entries, etc.).
+
+   JavaScript API Usage:
+   showDeleteModal({
+     title: 'Eintrag löschen?',  // optional, has default
+     message: 'Diese Aktion kann nicht rückgängig gemacht werden.',  // optional, has default
+     onConfirm: () => { /* action on delete */ },  // required
+     onCancel: () => { /* optional cancel handler */ }  // optional
+   });
+
+   HTMX Integration Example:
+   <button id="delete-invoice-btn"
+           onclick="showDeleteModal({
+               title: 'Rechnung löschen?',
+               message: 'Diese Aktion kann nicht rückgängig gemacht werden.',
+               onConfirm: () => {
+                   htmx.ajax('DELETE', '/invoices/123', {
+                       target: '#detail-pane',
+                       swap: 'innerHTML'
+                   });
+               }
+           }); return false;"
+           aria-label="Rechnung löschen">
+     Löschen
+   </button>
+#}
+
+<dialog id="delete_modal" class="modal" tabindex="-1" aria-labelledby="delete-modal-title" aria-describedby="delete-modal-desc">
+    <div class="modal-box max-w-md border-2 border-error/40 shadow-2xl relative">
+        {# Close button - X icon top-right #}
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="Modal schließen">
+                {{ icon("x") }}
+            </button>
+        </form>
+
+        {# Header - Alert icon + title #}
+        <div class="flex items-start gap-4 mb-6">
+            {# Lucide AlertTriangle icon - Error/Danger context #}
+            <div class="flex-shrink-0 w-12 h-12 rounded-full bg-error/20 flex items-center justify-center">
+                {{ icon("alert-triangle", class="text-error") }}
+            </div>
+            <div class="flex-1 pt-1">
+                <h3 id="delete-modal-title" class="font-bold text-2xl text-base-content">
+                    Eintrag löschen?
+                </h3>
+            </div>
+        </div>
+
+        {# Body - Message content #}
+        <p id="delete-modal-desc" class="text-base-content/80 text-base mb-8 ml-16">
+            Diese Aktion kann nicht rückgängig gemacht werden. Möchten Sie wirklich fortfahren?
+        </p>
+
+        {# Footer - Action buttons #}
+        <div class="modal-action mt-6 gap-3">
+            {# Cancel button - secondary, closes modal #}
+            <button type="button" class="btn btn-ghost" id="delete-cancel-btn">
+                {{ icon("x") }}
+                Abbrechen
+            </button>
+
+            {# Confirm button - error/destructive action #}
+            <button type="button" class="btn btn-error" id="delete-confirm-btn">
+                {{ icon("trash-2") }}
+                Löschen
+            </button>
+        </div>
+    </div>
+
+    {# Modal backdrop - requires explicit button click, no close on backdrop click #}
+    {# Note: We intentionally omit the backdrop button to prevent accidental dismissal #}
+</dialog>
+
+<script>
+// Global delete modal controller
+window.showDeleteModal = function(options = {}) {
+    const modal = document.getElementById('delete_modal');
+    const titleEl = document.getElementById('delete-modal-title');
+    const messageEl = document.getElementById('delete-modal-desc');
+    const confirmBtn = document.getElementById('delete-confirm-btn');
+    const cancelBtn = document.getElementById('delete-cancel-btn');
+
+    if (!modal) {
+        console.error('Delete modal not found in DOM');
+        return;
+    }
+
+    // Set custom title if provided
+    if (options.title) {
+        titleEl.textContent = options.title;
+    } else {
+        // Reset to default
+        titleEl.textContent = 'Eintrag löschen?';
+    }
+
+    // Set custom message if provided
+    if (options.message) {
+        messageEl.textContent = options.message;
+    } else {
+        // Reset to default
+        messageEl.textContent = 'Diese Aktion kann nicht rückgängig gemacht werden. Möchten Sie wirklich fortfahren?';
+    }
+
+    // Store callbacks in modal's dataset for cleanup
+    modal._deleteCallbacks = {
+        onConfirm: options.onConfirm || null,
+        onCancel: options.onCancel || null
+    };
+
+    // Remove previous event listeners by cloning and replacing buttons
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    // Add new event listeners
+    newConfirmBtn.addEventListener('click', function() {
+        const callbacks = modal._deleteCallbacks;
+        modal.close();
+        if (callbacks && typeof callbacks.onConfirm === 'function') {
+            callbacks.onConfirm();
+        }
+    });
+
+    newCancelBtn.addEventListener('click', function() {
+        const callbacks = modal._deleteCallbacks;
+        modal.close();
+        if (callbacks && typeof callbacks.onCancel === 'function') {
+            callbacks.onCancel();
+        }
+    });
+
+    // Show modal
+    modal.showModal();
+
+    // Focus cancel button for accessibility - safer default for destructive actions
+    // (prevents accidental deletion via keyboard shortcuts)
+    setTimeout(() => {
+        newCancelBtn.focus();
+    }, 200);  // Match animation duration
+};
+
+// Keyboard support - Escape to close (calls cancel callback)
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('delete_modal');
+    if (modal) {
+        modal.addEventListener('cancel', function(e) {
+            // Modal is being closed via ESC key or close button
+            const callbacks = modal._deleteCallbacks;
+            if (callbacks && typeof callbacks.onCancel === 'function') {
+                callbacks.onCancel();
+            }
+        });
+    }
+});
+</script>
+
+<style>
+/* Prevent backdrop click from closing modal */
+#delete_modal::backdrop {
+    cursor: default;
+}
+
+/* Smooth fade-in animation (daisyUI provides scale, we enhance it) */
+#delete_modal[open] {
+    animation: modal-fade-in 0.2s ease-out;
+}
+
+@keyframes modal-fade-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Enhanced error button styling for destructive action */
+#delete-confirm-btn.btn-error {
+    transition: all 0.2s ease;
+}
+
+#delete-confirm-btn.btn-error:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px oklch(var(--er) / 0.4);
+}
+
+#delete-confirm-btn.btn-error:focus {
+    outline: 2px solid oklch(var(--er));
+    outline-offset: 2px;
+}
+
+/* Ensure proper text contrast on error button */
+#delete-confirm-btn.btn-error {
+    color: oklch(var(--erc));
+}
+</style>

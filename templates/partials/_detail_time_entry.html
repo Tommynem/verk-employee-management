@@ -16,10 +16,16 @@
                     Bearbeiten
                 </button>
                 <button class="btn btn-sm btn-error"
-                        hx-delete="/time-entries/{{ entry.id }}"
-                        hx-confirm="Eintrag wirklich löschen?"
-                        hx-target="#detail-pane"
-                        hx-swap="innerHTML">
+                        onclick="showDeleteModal({
+                            title: 'Eintrag löschen?',
+                            message: 'Diese Aktion kann nicht rückgängig gemacht werden.',
+                            onConfirm: () => {
+                                htmx.ajax('DELETE', '/time-entries/{{ entry.id }}', {
+                                    target: '#detail-pane',
+                                    swap: 'innerHTML'
+                                });
+                            }
+                        }); return false;">
                     {{ icon("trash-2", class="w-4 h-4") }}
                     Löschen
                 </button>
