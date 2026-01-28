@@ -1,12 +1,12 @@
 # Current Session State
 
 **Date**: 2026-01-28
-**Status**: COMPLETE - UX Tweaks Sprint
+**Status**: COMPLETE - Ideas Tracker Sprint
 **Branch**: main
 
 ## Session Summary
 
-Implemented multiple P1/P2 UX improvements and bug fixes for the time tracking application.
+Tackled remaining P2 items and clarified one ambiguous item from the ideas tracker.
 
 ---
 
@@ -14,55 +14,41 @@ Implemented multiple P1/P2 UX improvements and bug fixes for the time tracking a
 
 | ID | Feature | Complexity | Notes |
 |----|---------|------------|-------|
-| #15 | Lucide icons standardization | Low | tree-palm for vacation, verified SVGs from Lucide |
-| #18 | Auto-sort table by date | Low | Changed to ascending (chronological) order |
-| #16 | Logo branding | Low | "[Verk logo] Zeiterfassung" in navbar |
-| #17 | Historical balance card | Medium | Shows "Endsaldo [Monat]" for past months |
-| #02 | Auto-suggest break time | Low | 30min auto-fill when duration >6h (German labor law) |
-| #04 | Balance trend sparkline | Medium | 8-week SVG sparkline in weekly summary |
-| #20 | Auto-refresh on edits | Medium | Summary cards refresh when entries change |
-
-## Bugs Fixed
-
-| ID | Bug | Fix |
-|----|-----|-----|
-| B1 | Holiday badge only appears after absence click | Added missing `is_holiday` and `holiday_name` variable extraction in `_browser_time_entries.html` |
+| #21 | Import VaWW modal components | Low | Replaced hx-confirm dialogs with styled daisyUI modals |
+| #08 | Draft indicator on months | Low | Shows "Entwurf"/"Abgegeben" badge in month header |
+| #12 | Notes quick-preview on hover | Low | Tooltip preview with icon indicator |
 
 ---
 
 ## Files Modified
 
-### Templates
-- `templates/base.html` - Navbar with icon macro, logo branding
-- `templates/macros/_icons.html` - Added tree-palm, verified icons
-- `templates/partials/_browser_time_entries.html` - Holiday vars, sparkline, historical balance card label
-- `templates/partials/_row_time_entry.html` - tree-palm icon for vacation
+### Templates Created
+- `templates/components/_modal_confirm_delete.html` - Delete confirmation modal from VaWW
 
-### Backend
-- `source/api/routers/time_entries.py` - Sort order (asc), is_current_month, balance_trend data
+### Templates Modified
+- `templates/base.html` - Included modal component
+- `templates/partials/_row_time_entry_edit.html` - Modal integration for delete
+- `templates/partials/_detail_time_entry.html` - Modal integration for delete
+- `templates/partials/_browser_time_entries.html` - Draft indicator badge
+- `templates/partials/_row_time_entry.html` - Notes tooltip preview
 
-### Frontend JS
-- `static/js/app.js` - Break time auto-suggest, auto-refresh on entry changes
-
-### Tests
-- `tests/test_api_time_entries.py` - Sort order test, balance trend tests
-- `tests/test_bug_fixes.py` - Updated comment (umbrella→tree-palm)
+### Backend Modified
+- `source/api/routers/time_entries.py` - Added has_draft_entries calculation
 
 ---
 
-## Remaining P2 Items (Next Session)
+## Test Status
 
-| ID | Feature | Complexity |
-|----|---------|------------|
-| #21 | Import VaWW modal components | Low |
-| #08 | Draft indicator on months | Low |
+All 441 tests passing.
 
-## P3 Items (Future)
+---
 
-| ID | Feature | Complexity |
-|----|---------|------------|
-| #05 | Annual overview | High |
-| #07 | Undo last action with toast | Medium |
+## Remaining P3 Items (Future)
+
+| ID | Feature | Complexity | Assessment |
+|----|---------|------------|------------|
+| #05 | Annual overview (vacation/sick/overtime stats) | High | Requires new service, multiple queries, complex UI |
+| #07 | Undo last action with toast | Medium | Needs action history tracking, state management |
 
 ---
 
@@ -72,5 +58,5 @@ Implemented multiple P1/P2 UX improvements and bug fixes for the time tracking a
 |-----------|--------|
 | Database | Working (data/employees.db) |
 | Dev server | User managed (localhost:8000) |
-| Tests | Passing |
+| Tests | 441 passing |
 | Linting | Passing |

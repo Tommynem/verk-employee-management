@@ -21,17 +21,17 @@ Use priority levels:
 | ID  | Idea                                           | Category     | Complexity | Priority                           |
 | --- | ---------------------------------------------- | ------------ | ---------- | ---------------------------------- |
 | 01  | Working Now timer (start/stop tracking)        | Core Feature | Medium     | SKIP                               |
-| 02  | Auto-suggest break time for >6h work           | UX           | Low        | P2                                 |
+| 02  | Auto-suggest break time for >6h work           | UX           | Low        | DONE                               |
 | 03  | Weekend detection warning                      | Validation   | Low        | SKIP(\*1)                          |
-| 04  | Trend visualization (balance sparkline)        | Analytics    | Medium     | P2                                 |
+| 04  | Trend visualization (balance sparkline)        | Analytics    | Medium     | DONE                               |
 | 05  | Annual overview (vacation/sick/overtime stats) | Analytics    | High       | P3                                 |
 | 06  | Submit week action (lock entries)              | Workflow     | Medium     | SKIP(\*2)                          |
 | 07  | Undo last action with toast                    | UX           | Medium     | P3                                 |
-| 08  | Draft indicator on months                      | UI           | Low        | P2(See \*2)                        |
+| 08  | Draft indicator on months                      | UI           | Low        | DONE                               |
 | 09  | Monthly PDF export                             | Export       | Medium     | P1: (In the works in another chat) |
 | 10  | CSV export                                     | Export       | Low        | P1: (In the works in another chat) |
 | 11  | Dark mode toggle                               | UI           | Medium     | SKIP                               |
-| 12  | Notes quick-preview on hover                   | UX           | Low        | What is notes?                     |
+| 12  | Notes quick-preview on hover                   | UX           | Low        | DONE                               |
 | 13  | Mobile swipe actions                           | Mobile       | High       | SKIP(\*3)                          |
 | 14  | Larger mobile touch targets                    | Mobile       | Low        | SKIP(\*3)                          |
 
@@ -60,6 +60,9 @@ Use priority levels:
 | 02  | Auto-suggest break time for >6h work    | 2026-01-28 | JS auto-fills 30min break when duration >6h                |
 | 04  | Balance trend sparkline                 | 2026-01-28 | SVG sparkline showing 8-week balance trend                 |
 | 20  | Auto-refresh on edits                   | 2026-01-28 | Summary cards refresh when entries change                  |
+| 21  | Import VaWW modal components            | 2026-01-28 | Replaced hx-confirm with styled daisyUI modals             |
+| 08  | Draft indicator on months               | 2026-01-28 | Shows "Entwurf" or "Abgegeben" badge in month header       |
+| 12  | Notes quick-preview on hover            | 2026-01-28 | Tooltip shows full notes text, icon indicates presence     |
 
 ---
 
