@@ -174,25 +174,7 @@ class TestUserSettingsModel:
         assert settings.id is not None
         assert settings.user_id == 1
         assert settings.weekly_target_hours == Decimal("32.00")
-        assert settings.carryover_hours is None
         assert settings.schedule_json is None
-
-    @pytest.mark.database
-    def test_create_user_settings_with_carryover(self, db_session):
-        """Test creating user settings with carryover hours."""
-        settings = UserSettings(
-            user_id=1,
-            weekly_target_hours=Decimal("40.00"),
-            carryover_hours=Decimal("15.50"),
-        )
-        db_session.add(settings)
-        db_session.commit()
-        db_session.refresh(settings)
-
-        assert settings.id is not None
-        assert settings.user_id == 1
-        assert settings.weekly_target_hours == Decimal("40.00")
-        assert settings.carryover_hours == Decimal("15.50")
 
     @pytest.mark.database
     def test_create_user_settings_with_schedule(self, db_session):
@@ -235,19 +217,6 @@ class TestUserSettingsModel:
 
         with pytest.raises(IntegrityError):
             db_session.commit()
-
-    @pytest.mark.database
-    def test_user_settings_carryover_default_none(self, db_session):
-        """Test carryover_hours defaults to None."""
-        settings = UserSettings(
-            user_id=1,
-            weekly_target_hours=Decimal("40.00"),
-        )
-        db_session.add(settings)
-        db_session.commit()
-        db_session.refresh(settings)
-
-        assert settings.carryover_hours is None
 
     @pytest.mark.database
     def test_user_settings_timestamps(self, db_session):

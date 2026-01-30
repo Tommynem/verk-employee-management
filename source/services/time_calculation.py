@@ -58,6 +58,43 @@ class TimeCalculationService:
         """
         return calc_balance(entry, settings)
 
+    def all_time_balance(
+        self,
+        entries: list[TimeEntry],
+        settings: UserSettings,
+        target_date: date | None = None,
+    ) -> Decimal:
+        """Calculate all-time balance up to target_date.
+
+        Args:
+            entries: List of ALL time entries from tracking start
+            settings: UserSettings with tracking_start_date and initial_hours_offset
+            target_date: Optional cutoff date (inclusive). If None, includes all entries.
+
+        Returns:
+            sum(daily_balances for entries up to target_date) + initial_hours_offset
+        """
+        # Start with all entries
+        filtered = entries
+
+        # Filter by tracking_start_date if set
+        if settings.tracking_start_date is not None:
+            filtered = [e for e in filtered if e.work_date >= settings.tracking_start_date]
+
+        # Filter by target_date if provided
+        if target_date is not None:
+            filtered = [e for e in filtered if e.work_date <= target_date]
+
+        # Sum daily balances
+        total = sum((self.daily_balance(e, settings) for e in filtered), start=Decimal("0.00"))
+
+        # Add initial_hours_offset if present
+        if settings.initial_hours_offset is not None:
+            total += settings.initial_hours_offset
+
+        # Return rounded
+        return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
     def period_balance(
         self,
         entries: list[TimeEntry],
@@ -69,7 +106,7 @@ class TimeCalculationService:
 
         Args:
             entries: List of TimeEntry instances for the period
-            settings: UserSettings with weekly_target_hours, carryover_hours,
+            settings: UserSettings with weekly_target_hours,
                       tracking_start_date, and initial_hours_offset
             include_carryover: Whether to include carryover from previous period
             respect_tracking_start: Whether to filter entries before tracking_start_date
@@ -83,17 +120,12 @@ class TimeCalculationService:
             filtered_entries = [e for e in entries if e.work_date >= settings.tracking_start_date]
 
         # Sum daily balances
-        total_balance = sum(
-            (self.daily_balance(entry, settings) for entry in filtered_entries), start=Decimal("0.00")
-        )
+        total_balance = sum((self.daily_balance(entry, settings) for entry in filtered_entries), start=Decimal("0.00"))
 
         # Add initial hours offset if requested and available
         if include_carryover:
             if settings.initial_hours_offset is not None:
                 total_balance += settings.initial_hours_offset
-            # Also add regular carryover if available
-            if settings.carryover_hours is not None:
-                total_balance += settings.carryover_hours
 
         return total_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -174,7 +206,7 @@ class TimeCalculationService:
 
         Args:
             entries: List of TimeEntry instances for the month
-            settings: UserSettings with weekly_target_hours and carryover_hours
+            settings: UserSettings with weekly_target_hours
             year: Year of the month
             month: Month number (1-12)
 
@@ -212,27 +244,18 @@ class TimeCalculationService:
 
             week_start += timedelta(days=7)
 
-        # Handle carryover
-        # For the first tracked month (contains tracking_start_date), use initial_hours_offset
-        # Otherwise, use regular carryover_hours
+        # Calculate carryover_in from historical data
         carryover_in = Decimal("0.00")
 
         if settings.tracking_start_date is not None:
-            # Check if this month contains or is after the tracking start date
             if first_day <= settings.tracking_start_date <= last_day:
-                # First tracked month - use initial_hours_offset
-                if settings.initial_hours_offset is not None:
-                    carryover_in = settings.initial_hours_offset
+                # First tracked month: use initial_hours_offset only (no historical balance yet)
+                carryover_in = settings.initial_hours_offset or Decimal("0.00")
             elif settings.tracking_start_date < first_day:
-                # After first tracked month - use regular carryover (or initial offset if no carryover set)
-                if settings.carryover_hours is not None:
-                    carryover_in = settings.carryover_hours
-                elif settings.initial_hours_offset is not None:
-                    carryover_in = settings.initial_hours_offset
-        else:
-            # No tracking start date - use regular carryover
-            if settings.carryover_hours is not None:
-                carryover_in = settings.carryover_hours
+                # Subsequent months: calculate from historical data
+                prev_month_end = first_day - timedelta(days=1)
+                carryover_in = self.all_time_balance(entries, settings, prev_month_end)
+        # else: tracking_start_date is None, carryover_in stays at 0.00
 
         carryover_out = carryover_in + period_balance
 

@@ -208,7 +208,8 @@ class TestPDFExportServiceExportPDF:
         settings = UserSettingsFactory.build(
             user_id=1,
             weekly_target_hours=Decimal("32.00"),
-            carryover_hours=Decimal("5.00"),
+            tracking_start_date=date(2026, 1, 1),
+            initial_hours_offset=Decimal("5.00"),
         )
         entries = [
             TimeEntryFactory.build(
@@ -308,13 +309,14 @@ class TestPDFExportServiceExportPDF:
         assert result.filename == "zeiterfassung_1_2026-12.pdf"
 
     @pytest.mark.asyncio
-    async def test_export_pdf_with_carryover_hours(self):
-        """Test export_pdf includes carryover hours in summary calculation."""
+    async def test_export_pdf_with_initial_hours_offset(self):
+        """Test export_pdf includes initial hours offset in summary calculation."""
         service = PDFExportService()
         settings = UserSettingsFactory.build(
             user_id=1,
             weekly_target_hours=Decimal("32.00"),
-            carryover_hours=Decimal("10.50"),
+            tracking_start_date=date(2026, 1, 1),
+            initial_hours_offset=Decimal("10.50"),
         )
         entries = [
             TimeEntryFactory.build(
@@ -334,18 +336,18 @@ class TestPDFExportServiceExportPDF:
             month=1,
         )
 
-        # Carryover should be reflected in monthly summary
+        # Initial offset should be reflected in monthly summary
         assert result.success is True
         assert result.content.startswith(b"%PDF-")
 
     @pytest.mark.asyncio
-    async def test_export_pdf_with_no_carryover(self):
-        """Test export_pdf handles None carryover_hours correctly."""
+    async def test_export_pdf_with_no_initial_offset(self):
+        """Test export_pdf handles None initial_hours_offset correctly."""
         service = PDFExportService()
         settings = UserSettingsFactory.build(
             user_id=1,
             weekly_target_hours=Decimal("32.00"),
-            carryover_hours=None,
+            initial_hours_offset=None,
         )
         entries = [
             TimeEntryFactory.build(

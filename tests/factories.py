@@ -91,7 +91,6 @@ class UserSettingsFactory(factory.Factory):
 
     user_id = factory.Sequence(lambda n: n + 1)
     weekly_target_hours = Decimal("32.00")
-    carryover_hours = None
     schedule_json = None
     tracking_start_date = None
     initial_hours_offset = None

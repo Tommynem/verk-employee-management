@@ -83,7 +83,7 @@ class PDFExportService:
 
         Args:
             entries: List of TimeEntry instances for the month
-            settings: UserSettings with weekly_target_hours and carryover_hours
+            settings: UserSettings with weekly_target_hours
             user_id: User ID for filename
             year: Year of the month
             month: Month number (1-12)

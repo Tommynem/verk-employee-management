@@ -58,7 +58,7 @@ class TimeEntry(Base):
 class UserSettings(Base):
     """User-specific settings for time tracking.
 
-    Stores weekly target hours, carryover balance, and custom schedules.
+    Stores weekly target hours and custom schedules.
     One settings record per user.
     """
 
@@ -72,7 +72,6 @@ class UserSettings(Base):
     weekly_target_hours: Decimal = Column(Numeric(4, 2), nullable=False)
 
     # Optional fields
-    carryover_hours: Decimal | None = Column(Numeric(6, 2), nullable=True)
     schedule_json: dict | None = Column(JSON, nullable=True)
 
     # Tracking configuration

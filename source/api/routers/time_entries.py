@@ -220,13 +220,18 @@ async def list_time_entries(
             }
         )
 
-    # Calculate weekly summary for current week
-    today = date.today()
-    days_since_monday = today.weekday()
-    week_start = today - timedelta(days=days_since_monday)
+    # Calculate weekly summary for the week containing the first day of the viewed month
+    # If month/year provided, use first day of that month; otherwise use today
+    if month is not None and year is not None:
+        reference_date = date(year, month, 1)
+    else:
+        reference_date = date.today()
+
+    days_since_monday = reference_date.weekday()
+    week_start = reference_date - timedelta(days=days_since_monday)
     week_end = week_start + timedelta(days=6)
 
-    # Get all entries for current week
+    # Get all entries for this week
     week_entries = (
         db.query(TimeEntry)
         .filter(
@@ -268,20 +273,49 @@ async def list_time_entries(
             db.commit()
             db.refresh(settings)
 
-        # Calculate monthly summary
-        service = TimeCalculationService()
-        summary = service.monthly_summary(entries, settings, year, month)
-
-        # Calculate prev/next month navigation
-        if month == 1:
-            prev_month, prev_year = 12, year - 1
+        # Query ALL historical entries for carryover calculation
+        # The monthly_summary method needs all entries to calculate carryover using all_time_balance
+        if settings.tracking_start_date:
+            all_entries = (
+                db.query(TimeEntry)
+                .filter(
+                    TimeEntry.user_id == user_id,
+                    TimeEntry.work_date >= settings.tracking_start_date,
+                )
+                .order_by(TimeEntry.work_date.asc())
+                .all()
+            )
         else:
-            prev_month, prev_year = month - 1, year
+            all_entries = entries  # Fall back to just the month's entries
+
+        # Calculate monthly summary with all historical entries
+        service = TimeCalculationService()
+        summary = service.monthly_summary(all_entries, settings, year, month)
+
+        # Calculate prev/next month navigation with year boundary validation
+        if month == 1:
+            if year <= 2020:
+                # At minimum boundary, stay at current month
+                prev_month = 1
+                prev_year = 2020
+            else:
+                prev_month = 12
+                prev_year = year - 1
+        else:
+            prev_month = month - 1
+            prev_year = year
 
         if month == 12:
-            next_month, next_year = 1, year + 1
+            if year >= 2100:
+                # At maximum boundary, stay at current month
+                next_month = 12
+                next_year = 2100
+            else:
+                next_month = 1
+                next_year = year + 1
         else:
-            next_month, next_year = month + 1, year
+            next_month = month + 1
+            next_year = year
 
         # Calculate next_date for "Add Next Day" button
         if entries:
@@ -704,8 +738,9 @@ async def update_time_entry(
     break_minutes: int | None = Form(None),
     absence_type: str | None = Form(None),
     notes: str | None = Form(None),
+    updated_at: str | None = Form(None),
 ) -> HTMLResponse:
-    """Update time entry.
+    """Update time entry with optimistic locking.
 
     Args:
         request: FastAPI request object
@@ -717,17 +752,37 @@ async def update_time_entry(
         break_minutes: Optional updated break minutes
         absence_type: Optional updated absence type
         notes: Optional updated notes
+        updated_at: Timestamp for optimistic locking (ISO format)
 
     Returns:
         HTML response with updated detail view
 
     Raises:
-        HTTPException: 404 if entry not found, 422 if entry is submitted or validation fails
+        HTTPException: 404 if entry not found, 409 if stale timestamp, 422 if entry is submitted or validation fails
     """
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.user_id == user_id).first()
 
     if not entry:
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+
+    # Optimistic locking: Require updated_at timestamp
+    if updated_at is None:
+        raise HTTPException(status_code=422, detail="Zeitstempel (updated_at) ist erforderlich für die Aktualisierung")
+
+    # Parse updated_at timestamp
+    from datetime import datetime
+
+    try:
+        sent_updated_at = datetime.fromisoformat(updated_at)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=422, detail="Ungültiger Zeitstempel") from e
+
+    # Check for concurrent modification (optimistic locking)
+    if entry.updated_at != sent_updated_at:
+        raise HTTPException(
+            status_code=409,
+            detail="Dieser Eintrag wurde zwischenzeitlich geändert. Bitte laden Sie die Seite neu.",
+        )
 
     # Check if entry is submitted (locked)
     if entry.status == RecordStatus.SUBMITTED:

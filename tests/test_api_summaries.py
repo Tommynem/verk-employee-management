@@ -166,9 +166,12 @@ class TestMonthlySummary:
 
     def test_month_includes_carryover(self, client, db_session):
         """Monthly summary includes carryover_in and carryover_out."""
-        # Create user settings with carryover from previous month
+        # Create user settings with initial offset
         settings = UserSettingsFactory.build(
-            user_id=1, weekly_target_hours=Decimal("32.00"), carryover_hours=Decimal("10.50")
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+            tracking_start_date=date(2026, 1, 1),
+            initial_hours_offset=Decimal("10.50"),
         )
         db_session.add(settings)
         db_session.commit()
@@ -176,7 +179,7 @@ class TestMonthlySummary:
         response = client.get("/summary/month?year=2026&month=1")
 
         assert response.status_code == 200
-        # Carryover in should be 10.50
+        # Carryover in should be 10.50 (from initial_hours_offset for first month)
         assert "10.5" in response.text or "10,5" in response.text
         # Carryover labels should be present
         assert "Übertrag" in response.text or "Carryover" in response.text
@@ -211,9 +214,12 @@ class TestMonthlySummary:
 
     def test_month_calculates_carryover_out(self, client, db_session):
         """Monthly summary calculates carryover_out correctly."""
-        # Create user settings with no initial carryover
+        # Create user settings with no initial offset
         settings = UserSettingsFactory.build(
-            user_id=1, weekly_target_hours=Decimal("32.00"), carryover_hours=Decimal("0.00")
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+            tracking_start_date=date(2026, 1, 1),
+            initial_hours_offset=Decimal("0.00"),
         )
         db_session.add(settings)
         db_session.commit()
