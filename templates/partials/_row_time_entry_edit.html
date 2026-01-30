@@ -34,6 +34,8 @@
         <span class="ml-2 badge badge-warning badge-sm" title="{{ holiday_name }}">{{ icon("party-popper", class="w-3 h-3") }}</span>
         {% endif %}
         <input type="hidden" name="work_date" value="{{ entry.work_date.strftime('%Y-%m-%d') }}" />
+        {# Optimistic locking timestamp #}
+        <input type="hidden" name="updated_at" value="{{ entry.updated_at.isoformat() }}" />
         {% endif %}
     </td>
 
@@ -111,11 +113,11 @@
             {% else %}
             {# Urlaub (Vacation) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'vacation' %}!bg-primary/30 !border-2 !border-primary !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'vacation' %}!bg-primary/30 !border-2 !border-primary !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Urlaub"
                     title="Urlaub"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("tree-palm", class="w-4 h-4") }}
@@ -123,11 +125,11 @@
 
             {# Krank (Sick) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'sick' %}!bg-error/30 !border-2 !border-error !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'sick' %}!bg-error/30 !border-2 !border-error !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Krank"
                     title="Krank"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'sick' %}none{% else %}sick{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'sick' %}none{% else %}sick{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("thermometer", class="w-4 h-4") }}
@@ -135,11 +137,11 @@
 
             {# Feiertag (Holiday) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'holiday' %}!bg-warning/30 !border-2 !border-warning !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'holiday' %}!bg-warning/30 !border-2 !border-warning !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Feiertag"
                     title="Feiertag"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'holiday' %}none{% else %}holiday{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'holiday' %}none{% else %}holiday{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("party-popper", class="w-4 h-4") }}
@@ -147,11 +149,11 @@
 
             {# Gleitzeit (Flex Time) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'flex_time' %}!bg-info/30 !border-2 !border-info !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'flex_time' %}!bg-info/30 !border-2 !border-info !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Gleitzeit"
                     title="Gleitzeit"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("clock-arrow-down", class="w-4 h-4") }}
@@ -165,7 +167,7 @@
         <div class="flex gap-1 items-center justify-end">
             {# Copy Last button #}
             <button type="button"
-                    class="btn btn-secondary btn-xs"
+                    class="btn btn-secondary btn-xs min-w-11 min-h-11"
                     onclick="copyLastEntry(this)"
                     title="Letzte kopieren"
                     aria-label="Letzte kopieren"
@@ -176,7 +178,7 @@
             {# Save button #}
             {% if is_new %}
             <button type="button"
-                    class="btn btn-primary btn-xs"
+                    class="btn btn-primary btn-xs min-w-11 min-h-11"
                     hx-post="/time-entries"
                     hx-include="closest tr"
                     hx-target="closest tr"
@@ -188,7 +190,7 @@
             </button>
             {% else %}
             <button type="button"
-                    class="btn btn-primary btn-xs"
+                    class="btn btn-primary btn-xs min-w-11 min-h-11"
                     hx-patch="/time-entries/{{ entry.id }}"
                     hx-include="closest tr"
                     hx-target="closest tr"
@@ -203,7 +205,7 @@
             {# Cancel button #}
             {% if is_new %}
             <button type="button"
-                    class="btn btn-ghost btn-xs"
+                    class="btn btn-ghost btn-xs min-w-11 min-h-11"
                     onclick="cancelNewEntry(this)"
                     title="Abbrechen"
                     aria-label="Abbrechen"
@@ -212,7 +214,7 @@
             </button>
             {% else %}
             <button type="button"
-                    class="btn btn-ghost btn-xs"
+                    class="btn btn-ghost btn-xs min-w-11 min-h-11"
                     hx-get="/time-entries/{{ entry.id }}/row"
                     hx-target="closest tr"
                     hx-swap="outerHTML"
@@ -226,13 +228,13 @@
             {# Delete button - only for existing entries #}
             {% if not is_new %}
             <button type="button"
-                    class="btn btn-error btn-xs"
+                    class="btn btn-error btn-xs min-w-11 min-h-11"
                     onclick="showDeleteModal({
                         title: 'Eintrag löschen?',
                         message: 'Diese Aktion kann nicht rückgängig gemacht werden.',
                         onConfirm: () => {
                             htmx.ajax('DELETE', '/time-entries/{{ entry.id }}', {
-                                target: 'closest tr',
+                                target: '#time-entry-row-{{ entry.id }}',
                                 swap: 'delete'
                             });
                         }
@@ -289,5 +291,20 @@ window.cancelNewEntry = function(button) {
         }
     }
 };
+
+// Auto-focus start time field when new row is added
+(function() {
+    const newRow = document.getElementById('{{ row_id }}');
+    if (newRow) {
+        const startTimeInput = newRow.querySelector('input[name="start_time"]');
+        if (startTimeInput) {
+            // Use setTimeout to ensure DOM is fully settled
+            setTimeout(() => {
+                startTimeInput.focus();
+                startTimeInput.select(); // Also select any pre-filled value
+            }, 50);
+        }
+    }
+})();
 </script>
 {% endif %}

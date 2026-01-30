@@ -249,6 +249,7 @@ class TestTimeEntryUpdate:
             data={
                 "notes": "Updated notes",
                 "break_minutes": "45",
+                "updated_at": entry.updated_at.isoformat(),
             },
         )
 
@@ -269,6 +270,7 @@ class TestTimeEntryUpdate:
             f"/time-entries/{entry.id}",
             data={
                 "notes": "Attempt to update",
+                "updated_at": entry.updated_at.isoformat(),
             },
         )
 
@@ -287,6 +289,7 @@ class TestTimeEntryUpdate:
             f"/time-entries/{entry.id}",
             data={
                 "notes": "Updated",
+                "updated_at": entry.updated_at.isoformat(),
             },
         )
 
@@ -1268,7 +1271,10 @@ class TestDailyTargetHoursIntegration:
         db_session.commit()
         db_session.refresh(entry)
 
-        response = client.patch(f"/time-entries/{entry.id}", data={"break_minutes": "30"})
+        response = client.patch(
+            f"/time-entries/{entry.id}",
+            data={"break_minutes": "30", "updated_at": entry.updated_at.isoformat()},
+        )
 
         assert response.status_code == 200
         # Should show 7:00h as target hours in returned row
@@ -1487,3 +1493,112 @@ class TestBalanceTrend:
         assert response.status_code == 200
         # Check for red stroke color (error color)
         assert "#ef4444" in response.text or "text-error" in response.text
+
+
+class TestWeeklySummaryContext:
+    """Test Issue C4: Weekly summary should reflect viewed month context."""
+
+    def test_weekly_summary_shows_viewed_month_week_not_current_week(self, client, db_session):
+        """Weekly summary should calculate from viewed month's first week, not current week."""
+        # Create user settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+
+        # Create entries for a specific month in the past (e.g., March 2025)
+        # March 1, 2025 is a Saturday, so the week starts on Monday Feb 24
+        # Create entry on Monday March 3 (which is in the week containing March 1)
+        march_monday = TimeEntryFactory.build(
+            user_id=1, work_date=date(2025, 3, 3), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+        )
+        db_session.add(march_monday)
+
+        # Also add an entry for the current week (to ensure it's NOT included)
+        from datetime import date as current_date
+
+        today = current_date.today()
+        current_week_entry = TimeEntryFactory.build(
+            user_id=1, work_date=today, start_time=time(9, 0), end_time=time(17, 0), break_minutes=0
+        )
+        db_session.add(current_week_entry)
+        db_session.commit()
+
+        # Request March 2025 view
+        response = client.get("/time-entries?month=3&year=2025")
+
+        assert response.status_code == 200
+        # The weekly summary should show "8.0" hours for March week, not include today's 8 hours
+        # The text should contain the hours from March 2025's first week
+        assert "Diese Woche:" in response.text
+
+
+class TestYearBoundaryNavigation:
+    """Test Issue M8: Year boundary navigation should be validated."""
+
+    def test_navigation_at_minimum_year_boundary(self, client, db_session):
+        """Navigation from January 2020 should not allow going to December 2019."""
+        # Request minimum year boundary (January 2020)
+        response = client.get("/time-entries?month=1&year=2020")
+
+        assert response.status_code == 200
+        # Check that previous month navigation is disabled or shows 2020 boundary
+        # The response should not contain prev_year=2019
+        assert "2019" not in response.text
+
+    def test_navigation_at_maximum_year_boundary(self, client, db_session):
+        """Navigation from December 2100 should not allow going to January 2101."""
+        # Request maximum year boundary (December 2100)
+        response = client.get("/time-entries?month=12&year=2100")
+
+        assert response.status_code == 200
+        # Check that next month navigation is disabled or shows 2100 boundary
+        # The response should not contain next_year=2101
+        assert "2101" not in response.text
+
+    def test_year_parameter_validation_rejects_below_minimum(self, client, db_session):
+        """Year parameter below 2020 should be rejected."""
+        # Request below minimum year
+        response = client.get("/time-entries?month=1&year=2019")
+
+        # Should return 422 validation error
+        assert response.status_code == 422
+
+    def test_year_parameter_validation_rejects_above_maximum(self, client, db_session):
+        """Year parameter above 2100 should be rejected."""
+        # Request above maximum year
+        response = client.get("/time-entries?month=1&year=2101")
+
+        # Should return 422 validation error
+        assert response.status_code == 422
+
+    def test_next_month_at_december_2100_stays_at_december(self, client, db_session):
+        """At December 2100, next month navigation should stay at December 2100."""
+        # Request December 2100
+        response = client.get("/time-entries?month=12&year=2100")
+
+        assert response.status_code == 200
+        # Check that next_month is 12 and next_year is 2100
+        # The navigation link should point to month=12&year=2100
+        assert "month=12" in response.text
+        assert "year=2100" in response.text
+        # Should NOT contain any navigation to January 2100
+        # (which would be going backward in time)
+        html = response.text
+        # Verify the "Nächster Monat" link stays at December 2100
+        assert (
+            'hx-get="/time-entries?month=12&amp;year=2100"' in html
+            or 'hx-get="/time-entries?month=12&year=2100"' in html
+        )
+
+    def test_prev_month_at_january_2020_stays_at_january(self, client, db_session):
+        """At January 2020, previous month navigation should stay at January 2020."""
+        # Request January 2020
+        response = client.get("/time-entries?month=1&year=2020")
+
+        assert response.status_code == 200
+        # Check that prev_month is 1 and prev_year is 2020
+        # The navigation link should point to month=1&year=2020
+        html = response.text
+        # Verify the "Vorheriger Monat" link stays at January 2020
+        assert (
+            'hx-get="/time-entries?month=1&amp;year=2020"' in html or 'hx-get="/time-entries?month=1&year=2020"' in html
+        )

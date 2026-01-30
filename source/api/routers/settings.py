@@ -54,7 +54,7 @@ async def update_weekday_defaults(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ) -> HTMLResponse:
-    """Update weekday defaults settings.
+    """Update weekday defaults settings with optimistic locking.
 
     Args:
         request: FastAPI request object
@@ -65,8 +65,11 @@ async def update_weekday_defaults(
         HTML response with updated settings partial
 
     Raises:
-        HTTPException: 422 if validation fails
+        HTTPException: 409 if stale timestamp, 422 if validation fails
     """
+    # Get form data
+    form_data = await request.form()
+
     # Get or create settings
     settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
     if not settings:
@@ -74,9 +77,29 @@ async def update_weekday_defaults(
 
         settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"), schedule_json={})
         db.add(settings)
+        # For new settings, skip optimistic locking check
+    else:
+        # Optimistic locking: Require updated_at timestamp for existing settings
+        updated_at_str = form_data.get("updated_at")
+        if updated_at_str is None:
+            raise HTTPException(
+                status_code=422, detail="Zeitstempel (updated_at) ist erforderlich für die Aktualisierung"
+            )
 
-    # Get form data
-    form_data = await request.form()
+        # Parse updated_at timestamp
+        from datetime import datetime
+
+        try:
+            sent_updated_at = datetime.fromisoformat(str(updated_at_str))
+        except (ValueError, TypeError) as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zeitstempel") from e
+
+        # Check for concurrent modification (optimistic locking)
+        if settings.updated_at != sent_updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail="Einstellungen wurden zwischenzeitlich geändert. Bitte laden Sie die Seite neu.",
+            )
 
     # Initialize schedule_json if needed
     if not settings.schedule_json:
@@ -123,6 +146,19 @@ async def update_weekday_defaults(
             if end_time and not time_pattern.match(end_time):
                 raise HTTPException(status_code=422, detail=f"Ungültige Endzeit für {GERMAN_DAYS[i]}")
 
+            # Validate end_time is after start_time for enabled work days
+            if start_time and end_time:
+                # Convert HH:MM to comparable format (minutes since midnight)
+                start_parts = start_time.split(":")
+                end_parts = end_time.split(":")
+                start_minutes = int(start_parts[0]) * 60 + int(start_parts[1])
+                end_minutes = int(end_parts[0]) * 60 + int(end_parts[1])
+
+                if end_minutes <= start_minutes:
+                    raise HTTPException(
+                        status_code=422, detail=f"Endzeit muss nach der Startzeit liegen für {GERMAN_DAYS[i]}"
+                    )
+
             # Validate break minutes
             try:
                 break_minutes = int(break_minutes_str) if break_minutes_str else 30
@@ -159,7 +195,7 @@ async def update_tracking_settings(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ) -> HTMLResponse:
-    """Update tracking settings including weekly target hours.
+    """Update tracking settings including weekly target hours with optimistic locking.
 
     Handles weekly_target_hours, tracking_start_date, and initial_hours_offset.
     Supports German number format (comma as decimal separator) for numeric fields.
@@ -174,16 +210,40 @@ async def update_tracking_settings(
         HTML response with tracking settings form partial
 
     Raises:
-        HTTPException: 422 if validation fails
+        HTTPException: 409 if stale timestamp, 422 if validation fails
     """
+    # Get form data
+    form_data = await request.form()
+
     settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
 
     # Get or create settings
     if not settings:
         settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
         db.add(settings)
+        # For new settings, skip optimistic locking check
+    else:
+        # Optimistic locking: Require updated_at timestamp for existing settings
+        updated_at_str = form_data.get("updated_at")
+        if updated_at_str is None:
+            raise HTTPException(
+                status_code=422, detail="Zeitstempel (updated_at) ist erforderlich für die Aktualisierung"
+            )
 
-    form_data = await request.form()
+        # Parse updated_at timestamp
+        from datetime import datetime
+
+        try:
+            sent_updated_at = datetime.fromisoformat(str(updated_at_str))
+        except (ValueError, TypeError) as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zeitstempel") from e
+
+        # Check for concurrent modification (optimistic locking)
+        if settings.updated_at != sent_updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail="Einstellungen wurden zwischenzeitlich geändert. Bitte laden Sie die Seite neu.",
+            )
 
     # Parse weekly_target_hours (German format: comma as decimal separator)
     weekly_hours_str = form_data.get("weekly_target_hours", "")

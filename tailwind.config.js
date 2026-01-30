@@ -17,6 +17,9 @@ export default {
           'dark-end': '#364153',
         },
       },
+      screens: {
+        'xs': '375px',
+      },
     },
   },
   plugins: [

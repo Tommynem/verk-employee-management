@@ -115,6 +115,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/weekday-defaults",
@@ -122,6 +123,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_0_start_time": "08:00",
                 "weekday_0_end_time": "16:30",
                 "weekday_0_break_minutes": "30",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -133,6 +135,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/weekday-defaults",
@@ -140,6 +143,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_0_start_time": "08:00",
                 "weekday_0_end_time": "16:30",
                 "weekday_0_break_minutes": "30",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -153,6 +157,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         client.patch(
             "/settings/weekday-defaults",
@@ -160,6 +165,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_0_start_time": "09:00",
                 "weekday_0_end_time": "17:00",
                 "weekday_0_break_minutes": "45",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -187,6 +193,7 @@ class TestWeekdayDefaultsUpdate:
         )
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         # Update only Monday (weekday 0)
         response = client.patch(
@@ -195,6 +202,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_0_start_time": "09:00",
                 "weekday_0_end_time": "17:00",
                 "weekday_0_break_minutes": "45",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -212,6 +220,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/weekday-defaults",
@@ -225,6 +234,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_2_start_time": "08:00",
                 "weekday_2_end_time": "16:30",
                 "weekday_2_break_minutes": "30",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -241,6 +251,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/weekday-defaults",
@@ -248,6 +259,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_0_start_time": "invalid",  # Invalid time format
                 "weekday_0_end_time": "16:30",
                 "weekday_0_break_minutes": "30",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -258,6 +270,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/weekday-defaults",
@@ -265,6 +278,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_0_start_time": "08:00",
                 "weekday_0_end_time": "16:30",
                 "weekday_0_break_minutes": "999",  # Invalid: too large
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -275,6 +289,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/weekday-defaults",
@@ -282,6 +297,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_0_start_time": "09:30",
                 "weekday_0_end_time": "18:00",
                 "weekday_0_break_minutes": "60",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -303,12 +319,14 @@ class TestWeekdayDefaultsUpdate:
         )
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         # Update to make Saturday non-working by omitting data or sending empty values
         response = client.patch(
             "/settings/weekday-defaults",
             data={
                 "weekday_5_enabled": "false",  # Indicate day is disabled
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -338,6 +356,7 @@ class TestWeekdayDefaultsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/weekday-defaults",
@@ -345,6 +364,7 @@ class TestWeekdayDefaultsUpdate:
                 "weekday_7_start_time": "08:00",  # Invalid: weekday must be 0-6
                 "weekday_7_end_time": "16:30",
                 "weekday_7_break_minutes": "30",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -360,11 +380,13 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "tracking_start_date": "2026-01-15",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -383,11 +405,13 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "initial_hours_offset": "15.50",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -404,12 +428,14 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "tracking_start_date": "2026-01-15",
                 "initial_hours_offset": "15.50",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -437,12 +463,14 @@ class TestTrackingSettingsUpdate:
         )
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "tracking_start_date": "",
                 "initial_hours_offset": "",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -460,11 +488,13 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "tracking_start_date": "invalid-date",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -477,11 +507,13 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "initial_hours_offset": "not-a-number",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -494,11 +526,13 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "initial_hours_offset": "1000.00",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -511,11 +545,13 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "initial_hours_offset": "-1000.00",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 
@@ -552,11 +588,13 @@ class TestTrackingSettingsUpdate:
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
+        db_session.refresh(settings)
 
         response = client.patch(
             "/settings/tracking",
             data={
                 "initial_hours_offset": "-15.50",
+                "updated_at": settings.updated_at.isoformat(),
             },
         )
 

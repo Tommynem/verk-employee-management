@@ -96,6 +96,8 @@ async def import_time_entries(
     dry_run: Annotated[bool, Query()] = False,
     skip_duplicates: Annotated[bool, Query()] = False,
     user_id: Annotated[int, Query()] = 1,
+    month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    year: Annotated[int | None, Query()] = None,
     db: Session = Depends(get_db),
 ):
     """Import time entries from CSV file.
@@ -108,6 +110,8 @@ async def import_time_entries(
         dry_run: Query param - if True, validate only without persisting (defaults to False)
         skip_duplicates: Query param - if True, skip entries for dates that already exist (defaults to False)
         user_id: Query param - User ID to assign imported entries to (defaults to 1)
+        month: Query param - Expected month for entries (1-12), validates all entries match this month
+        year: Query param - Expected year for entries, validates all entries match this year
         db: Database session
 
     Returns:
@@ -128,6 +132,8 @@ async def import_time_entries(
         db=db,
         dry_run=dry_run,
         skip_duplicates=skip_duplicates,
+        expected_month=month,
+        expected_year=year,
     )
 
     # Check if request is from HTMX

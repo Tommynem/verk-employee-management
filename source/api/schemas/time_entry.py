@@ -16,13 +16,17 @@ from source.database.enums import AbsenceType, RecordStatus
 
 
 class TimeEntryUpdate(BaseModel):
-    """Base schema with all mutable fields (all optional for updates)."""
+    """Base schema with all mutable fields (all optional for updates).
+
+    Includes updated_at for optimistic locking to prevent race conditions.
+    """
 
     start_time: time | None = None
     end_time: time | None = None
     break_minutes: int | None = Field(None, ge=0, le=480)
     notes: str | None = Field(None, max_length=500)
     absence_type: AbsenceType = AbsenceType.NONE
+    updated_at: datetime | None = Field(None, description="Timestamp for optimistic locking")
 
 
 class TimeEntryCreate(TimeEntryUpdate):

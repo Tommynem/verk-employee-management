@@ -9,6 +9,11 @@
               hx-target="#settings-content"
               hx-swap="innerHTML">
 
+            {# Hidden field for optimistic locking #}
+            {% if settings %}
+            <input type="hidden" name="updated_at" value="{{ settings.updated_at.isoformat() }}" />
+            {% endif %}
+
             <div class="overflow-x-auto">
                 <table class="table">
                     <thead>

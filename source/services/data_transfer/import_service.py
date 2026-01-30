@@ -50,11 +50,13 @@ class ImportService:
         db: Session,
         dry_run: bool = False,
         skip_duplicates: bool = False,
+        expected_month: int | None = None,
+        expected_year: int | None = None,
     ) -> ImportResult:
         """Import time entries from file content.
 
         Pipeline: validate_structure → parse rows → validate business rules
-                  → check duplicates → persist (unless dry_run)
+                  → check duplicates → check month/year → persist (unless dry_run)
 
         Args:
             content: Raw file bytes
@@ -62,6 +64,8 @@ class ImportService:
             db: Database session
             dry_run: If True, validate only (don't persist)
             skip_duplicates: If True, skip entries for dates that exist
+            expected_month: Expected month (1-12) for all entries, if provided
+            expected_year: Expected year for all entries, if provided
 
         Returns:
             ImportResult with success, counts, errors, entries
@@ -91,6 +95,12 @@ class ImportService:
             rule_errors = self._validate_business_rules(row_num, row)
             if rule_errors:
                 errors.extend(rule_errors)
+                continue
+
+            # Check month/year match if expected values provided
+            month_errors = self._validate_month_year(row_num, row, expected_month, expected_year)
+            if month_errors:
+                errors.extend(month_errors)
                 continue
 
             # Check intra-file duplicates
@@ -343,6 +353,50 @@ class ImportService:
                             code="break_exceeds_duration",
                         )
                     )
+
+        return errors
+
+    def _validate_month_year(
+        self, row_num: int, row: TimeEntryRow, expected_month: int | None, expected_year: int | None
+    ) -> list[ValidationError]:
+        """Validate that entry's date matches expected month/year.
+
+        Args:
+            row_num: Row number in source file
+            row: Parsed TimeEntryRow
+            expected_month: Expected month (1-12), or None to skip month validation
+            expected_year: Expected year, or None to skip year validation
+
+        Returns:
+            List of validation errors (empty if valid)
+        """
+        from source.core.i18n import GERMAN_MONTHS
+
+        errors = []
+
+        # Only validate if both expected_month and expected_year are provided
+        if expected_month is not None and expected_year is not None:
+            entry_month = row.work_date.month
+            entry_year = row.work_date.year
+
+            if entry_month != expected_month or entry_year != expected_year:
+                # Build clear German error message
+                entry_month_name = GERMAN_MONTHS[entry_month]
+                expected_month_name = GERMAN_MONTHS[expected_month]
+
+                message = (
+                    f"Die CSV-Datei enthält Einträge für {entry_month_name} {entry_year}, "
+                    f"aber Sie befinden sich auf der Seite für {expected_month_name} {expected_year}"
+                )
+
+                errors.append(
+                    ValidationError(
+                        row_number=row_num,
+                        field="work_date",
+                        message=message,
+                        code="month_mismatch",
+                    )
+                )
 
         return errors
 

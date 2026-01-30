@@ -30,9 +30,9 @@
 
 <dialog id="delete_modal" class="modal" tabindex="-1" aria-labelledby="delete-modal-title" aria-describedby="delete-modal-desc">
     <div class="modal-box max-w-md border-2 border-error/40 shadow-2xl relative">
-        {# Close button - X icon top-right #}
+        {# Close button - X icon top-right - mobile touch target compliant #}
         <form method="dialog">
-            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" aria-label="Modal schließen">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2 min-w-11 min-h-11" aria-label="Modal schließen">
                 {{ icon("x") }}
             </button>
         </form>

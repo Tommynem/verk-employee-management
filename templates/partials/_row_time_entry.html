@@ -26,7 +26,13 @@
     <td class="py-3 px-4 text-sm">{{ entry.break_minutes|format_duration if entry.break_minutes else '' }}</td>
 
     {# 5. Arbeitsstunden Real (Actual Hours) #}
-    <td class="py-3 px-4 text-sm bg-info/10">{{ actual_hours|format_hours if actual_hours else '' }}</td>
+    <td class="py-3 px-4 text-sm bg-info/10">
+        {% if entry.absence_type.value in ['vacation', 'sick', 'holiday', 'flex_time'] %}
+            {{ target_hours|format_hours }}
+        {% else %}
+            {{ actual_hours|format_hours if actual_hours else '' }}
+        {% endif %}
+    </td>
 
     {# 6. Arbeitsstunden Soll (Target Hours) #}
     <td class="py-3 px-4 text-sm">{{ target_hours|format_hours }}</td>
@@ -39,13 +45,8 @@
     {# 8. Abwesenheit / Bemerkung (Notes) #}
     <td class="py-3 px-4 text-sm text-base-content/70">
         {% if entry.notes %}
-        <div class="flex items-center gap-2">
-            <div class="tooltip tooltip-top" data-tip="{{ entry.notes }}">
-                <span class="truncate max-w-[200px] inline-block">{{ entry.notes }}</span>
-            </div>
-            <div class="tooltip tooltip-top" data-tip="Bemerkung vorhanden">
-                {{ icon("message-square", class="w-4 h-4 text-base-content/40 flex-shrink-0") }}
-            </div>
+        <div class="tooltip tooltip-top" data-tip="{{ entry.notes }}">
+            {{ icon("message-square", class="w-4 h-4 text-base-content/40") }}
         </div>
         {% endif %}
     </td>
@@ -55,11 +56,11 @@
         <div class="flex gap-1 justify-center">
             {# Urlaub (Vacation) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'vacation' %}!bg-primary/30 !border-2 !border-primary !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'vacation' %}!bg-primary/30 !border-2 !border-primary !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Urlaub"
                     title="Urlaub"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'vacation' %}none{% else %}vacation{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("tree-palm", class="w-4 h-4") }}
@@ -67,11 +68,11 @@
 
             {# Krank (Sick) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'sick' %}!bg-error/30 !border-2 !border-error !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'sick' %}!bg-error/30 !border-2 !border-error !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Krank"
                     title="Krank"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'sick' %}none{% else %}sick{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'sick' %}none{% else %}sick{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("thermometer", class="w-4 h-4") }}
@@ -79,11 +80,11 @@
 
             {# Feiertag (Holiday) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'holiday' %}!bg-warning/30 !border-2 !border-warning !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'holiday' %}!bg-warning/30 !border-2 !border-warning !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Feiertag"
                     title="Feiertag"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'holiday' %}none{% else %}holiday{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'holiday' %}none{% else %}holiday{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("party-popper", class="w-4 h-4") }}
@@ -91,11 +92,11 @@
 
             {# Gleitzeit (Flex Time) #}
             <button type="button"
-                    class="btn btn-xs btn-ghost {% if entry.absence_type.value == 'flex_time' %}!bg-info/30 !border-2 !border-info !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
+                    class="btn btn-xs btn-ghost min-w-11 min-h-11 {% if entry.absence_type.value == 'flex_time' %}!bg-info/30 !border-2 !border-info !opacity-100{% else %}opacity-60 hover:opacity-100{% endif %}"
                     aria-label="Gleitzeit"
                     title="Gleitzeit"
                     hx-patch="/time-entries/{{ entry.id }}"
-                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}"}'
+                    hx-vals='{"absence_type": "{% if entry.absence_type.value == 'flex_time' %}none{% else %}flex_time{% endif %}", "updated_at": "{{ entry.updated_at.isoformat() }}"}'
                     hx-target="closest tr"
                     hx-swap="outerHTML">
                 {{ icon("clock-arrow-down", class="w-4 h-4") }}
@@ -108,7 +109,7 @@
         <div class="flex gap-1 items-center justify-end">
             {# Copy to new row button #}
             <button type="button"
-                    class="btn btn-ghost btn-xs opacity-40 hover:opacity-100"
+                    class="btn btn-ghost btn-xs min-w-11 min-h-11 opacity-40 hover:opacity-100"
                     onclick="copyEntryToNew({{ entry.id }})"
                     title="Als Vorlage kopieren"
                     aria-label="Als Vorlage kopieren">
@@ -117,7 +118,7 @@
 
             {# Delete button - red/error styling #}
             <button type="button"
-                    class="btn btn-ghost btn-xs text-error opacity-40 hover:opacity-100 hover:bg-error/20"
+                    class="btn btn-ghost btn-xs min-w-11 min-h-11 text-error opacity-40 hover:opacity-100 hover:bg-error/20"
                     onclick="showDeleteModal({
                         title: 'Eintrag löschen?',
                         message: 'Diese Aktion kann nicht rückgängig gemacht werden.',

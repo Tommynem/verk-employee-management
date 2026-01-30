@@ -188,7 +188,7 @@ class TestQuickAbsenceButtonInteraction:
 
         response = client.patch(
             f"/time-entries/{entry.id}",
-            data={"absence_type": "vacation"},
+            data={"absence_type": "vacation", "updated_at": entry.updated_at.isoformat()},
         )
 
         assert response.status_code == 200
@@ -211,7 +211,7 @@ class TestQuickAbsenceButtonInteraction:
 
         response = client.patch(
             f"/time-entries/{entry.id}",
-            data={"absence_type": "none"},
+            data={"absence_type": "none", "updated_at": entry.updated_at.isoformat()},
         )
 
         assert response.status_code == 200
@@ -232,7 +232,7 @@ class TestQuickAbsenceButtonInteraction:
 
         response = client.patch(
             f"/time-entries/{entry.id}",
-            data={"absence_type": "sick"},
+            data={"absence_type": "sick", "updated_at": entry.updated_at.isoformat()},
         )
 
         assert response.status_code == 200
@@ -252,7 +252,7 @@ class TestQuickAbsenceButtonInteraction:
 
         response = client.patch(
             f"/time-entries/{entry.id}",
-            data={"absence_type": "sick"},
+            data={"absence_type": "sick", "updated_at": entry.updated_at.isoformat()},
         )
 
         assert response.status_code == 200
@@ -356,7 +356,7 @@ class TestBackendAbsenceToggleLogic:
         # Frontend sends "none" when clicking active button
         response = client.patch(
             f"/time-entries/{entry.id}",
-            data={"absence_type": "none"},
+            data={"absence_type": "none", "updated_at": entry.updated_at.isoformat()},
         )
 
         assert response.status_code == 200
@@ -382,7 +382,7 @@ class TestBackendAbsenceToggleLogic:
 
         response = client.patch(
             f"/time-entries/{entry.id}",
-            data={"absence_type": "sick"},
+            data={"absence_type": "sick", "updated_at": entry.updated_at.isoformat()},
         )
 
         assert response.status_code == 200
@@ -404,9 +404,10 @@ class TestBackendAbsenceToggleLogic:
         # Test each absence type
         absence_types = ["vacation", "sick", "holiday", "flex_time"]
         for absence_type in absence_types:
+            db_session.refresh(entry)  # Refresh to get latest updated_at
             response = client.patch(
                 f"/time-entries/{entry.id}",
-                data={"absence_type": absence_type},
+                data={"absence_type": absence_type, "updated_at": entry.updated_at.isoformat()},
             )
             assert response.status_code == 200, f"Failed to set {absence_type}"
             db_session.refresh(entry)

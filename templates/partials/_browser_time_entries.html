@@ -138,7 +138,9 @@
 {% endif %}
 
 <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg overflow-hidden">
-    <div class="overflow-x-auto">
+    <div class="overflow-x-auto relative">
+        {# Horizontal scroll indicator for mobile - gradient fade on right edge #}
+        <div class="absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-base-100 to-transparent pointer-events-none z-10 md:hidden" id="scroll-indicator"></div>
         <table id="time-entries-table" class="table w-full">
             <thead>
                 <tr class="bg-neutral text-white">
@@ -187,7 +189,8 @@
                         <button class="flex items-center justify-center gap-2 w-full text-primary font-medium"
                                 hx-get="/time-entries/new-row?date={{ next_date }}"
                                 hx-target="closest tr"
-                                hx-swap="beforebegin">
+                                hx-swap="beforebegin"
+                                hx-disabled-elt="this">
                             {{ icon("plus-circle", class="w-5 h-5") }}
                             <span>{% if entries %}Nächsten Tag hinzufügen ({{ next_date.strftime('%d.%m.%y') }} {{ next_weekday }}){% else %}Ersten Eintrag hinzufügen ({{ next_date.strftime('%d.%m.%y') }} {{ next_weekday }}){% endif %}</span>
                         </button>
@@ -310,6 +313,153 @@
             document.getElementById('import-modal').close();
             // Reload the browser view to show imported entries
             window.location.reload();
+        }
+    });
+
+    // ========================================
+    // Horizontal Scroll Indicator (ISSUE M11 Fix)
+    // ========================================
+
+    function updateScrollIndicator() {
+        const container = document.querySelector('.overflow-x-auto');
+        const indicator = document.getElementById('scroll-indicator');
+
+        if (container && indicator) {
+            const isScrolledToEnd = container.scrollLeft + container.clientWidth >= container.scrollWidth - 5;
+            indicator.style.opacity = isScrolledToEnd ? '0' : '1';
+        }
+    }
+
+    // Update indicator on scroll
+    const scrollContainer = document.querySelector('.overflow-x-auto');
+    if (scrollContainer) {
+        scrollContainer.addEventListener('scroll', updateScrollIndicator);
+        // Initial check
+        updateScrollIndicator();
+    }
+
+    // Update on window resize
+    window.addEventListener('resize', updateScrollIndicator);
+
+    // ========================================
+    // Unsaved Changes Warning (ISSUE M9 Fix)
+    // ========================================
+
+    // Track dirty state globally
+    var isDirty = false;
+    var originalValues = {};
+
+    /**
+     * Store original values when entering edit mode
+     */
+    function captureOriginalValues(editRow) {
+        originalValues = {};
+        const inputs = editRow.querySelectorAll('input[name], textarea[name], select[name]');
+        inputs.forEach(input => {
+            originalValues[input.name] = input.value;
+        });
+        isDirty = false; // Initially not dirty when entering edit mode
+    }
+
+    /**
+     * Check if current values differ from original
+     */
+    function checkDirtyState(editRow) {
+        if (!editRow) return false;
+
+        const inputs = editRow.querySelectorAll('input[name], textarea[name], select[name]');
+        for (let input of inputs) {
+            const currentValue = input.value;
+            const originalValue = originalValues[input.name] || '';
+            if (currentValue !== originalValue) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Warn user before leaving page with unsaved changes
+     */
+    window.addEventListener('beforeunload', function(e) {
+        if (isDirty) {
+            e.preventDefault();
+            e.returnValue = ''; // Chrome requires returnValue to be set
+            return ''; // Some browsers require a return value
+        }
+    });
+
+    /**
+     * Track when edit row is loaded
+     */
+    document.addEventListener('htmx:afterSettle', function(event) {
+        // Check if an edit row was just loaded
+        const editRow = event.target.querySelector('[data-edit-row]');
+        if (editRow) {
+            captureOriginalValues(editRow);
+        }
+
+        // Check if save/cancel completed (edit row removed)
+        const tableHasEditRow = document.querySelector('[data-edit-row]');
+        if (!tableHasEditRow) {
+            isDirty = false;
+            originalValues = {};
+        }
+    });
+
+    /**
+     * Track changes in edit mode inputs
+     */
+    document.addEventListener('input', function(e) {
+        if (e.target.closest('[data-edit-row]')) {
+            const editRow = e.target.closest('[data-edit-row]');
+            isDirty = checkDirtyState(editRow);
+        }
+    });
+
+    /**
+     * Clear dirty state when save button is clicked
+     */
+    document.addEventListener('htmx:beforeRequest', function(event) {
+        const target = event.detail.elt;
+
+        // Check if this is a save/cancel/absence action from edit row
+        if (target.closest('[data-edit-row]')) {
+            const isSaveOrCancel = target.classList.contains('btn-primary') ||
+                                   target.classList.contains('btn-ghost') ||
+                                   target.hasAttribute('hx-patch');
+
+            if (isSaveOrCancel) {
+                // Clear dirty state immediately before request
+                isDirty = false;
+            }
+        }
+    });
+
+    /**
+     * Warn before navigating away from edit row via HTMX
+     */
+    document.addEventListener('htmx:confirm', function(event) {
+        // Check if we're in edit mode and have unsaved changes
+        const editRow = document.querySelector('[data-edit-row]');
+
+        if (editRow && isDirty) {
+            // Check if this is NOT a save/cancel button (those should proceed)
+            const target = event.detail.elt;
+            const isSaveOrCancel = target.closest('[data-edit-row]') &&
+                                   (target.classList.contains('btn-primary') ||
+                                    target.classList.contains('btn-ghost') ||
+                                    target.hasAttribute('hx-patch'));
+
+            if (!isSaveOrCancel) {
+                // This is navigation away from edit mode
+                const confirmed = confirm('Sie haben ungespeicherte Änderungen. Möchten Sie die Seite wirklich verlassen?');
+                if (!confirmed) {
+                    event.preventDefault(); // Prevent the HTMX request
+                } else {
+                    isDirty = false; // User confirmed, clear dirty state
+                }
+            }
         }
     });
 </script>
