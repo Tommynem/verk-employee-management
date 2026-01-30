@@ -619,3 +619,315 @@ class TestTrackingSettingsUpdate:
 
         # May return 200 or 201 depending on implementation
         assert response.status_code in [200, 201]
+
+
+class TestVacationSettingsUpdate:
+    """Test PATCH /settings/vacation endpoint."""
+
+    def test_patch_vacation_settings_updates_initial_days(self, client, db_session):
+        """PATCH updates initial_vacation_days successfully."""
+        # Create initial settings
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "15.5",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify database update
+        db_session.refresh(settings)
+        assert settings.initial_vacation_days == Decimal("15.5")
+
+    def test_patch_vacation_settings_updates_annual_days(self, client, db_session):
+        """PATCH updates annual_vacation_days successfully."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "annual_vacation_days": "30.0",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify database update
+        db_session.refresh(settings)
+        assert settings.annual_vacation_days == Decimal("30.0")
+
+    def test_patch_vacation_settings_updates_carryover(self, client, db_session):
+        """PATCH updates carryover days and expiry successfully."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "vacation_carryover_days": "5.0",
+                "vacation_carryover_expires": "2026-03-31",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify database update
+        db_session.refresh(settings)
+        from datetime import date as date_type
+
+        assert settings.vacation_carryover_days == Decimal("5.0")
+        assert settings.vacation_carryover_expires == date_type(2026, 3, 31)
+
+    def test_patch_vacation_settings_all_fields(self, client, db_session):
+        """PATCH updates all four vacation fields at once."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "15.5",
+                "annual_vacation_days": "30.0",
+                "vacation_carryover_days": "5.0",
+                "vacation_carryover_expires": "2026-03-31",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify all fields updated
+        db_session.refresh(settings)
+        from datetime import date as date_type
+
+        assert settings.initial_vacation_days == Decimal("15.5")
+        assert settings.annual_vacation_days == Decimal("30.0")
+        assert settings.vacation_carryover_days == Decimal("5.0")
+        assert settings.vacation_carryover_expires == date_type(2026, 3, 31)
+
+    def test_patch_vacation_settings_clears_with_empty_string(self, client, db_session):
+        """PATCH clears vacation fields when empty strings provided."""
+        # Create settings with existing values
+        from datetime import date as date_type
+
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            initial_vacation_days=Decimal("15.5"),
+            annual_vacation_days=Decimal("30.0"),
+            vacation_carryover_days=Decimal("5.0"),
+            vacation_carryover_expires=date_type(2026, 3, 31),
+        )
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "",
+                "annual_vacation_days": "",
+                "vacation_carryover_days": "",
+                "vacation_carryover_expires": "",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify fields cleared
+        db_session.refresh(settings)
+        assert settings.initial_vacation_days is None
+        assert settings.annual_vacation_days is None
+        assert settings.vacation_carryover_days is None
+        assert settings.vacation_carryover_expires is None
+
+    def test_patch_vacation_settings_invalid_number_format(self, client, db_session):
+        """PATCH rejects non-numeric vacation days with German error message."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "not-a-number",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 422
+        # Should contain German validation error
+        assert response.text
+
+    def test_patch_vacation_settings_invalid_date_format(self, client, db_session):
+        """PATCH rejects invalid date format with German error message."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "vacation_carryover_expires": "invalid-date",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 422
+        # Should contain German error message
+        assert "Ungültiges Datumsformat" in response.text
+
+    def test_patch_vacation_settings_negative_days_rejected(self, client, db_session):
+        """PATCH rejects negative vacation days with German error message."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "-5.0",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 422
+        # Should contain validation error about negative values
+        assert response.text
+
+    def test_patch_vacation_settings_german_number_format(self, client, db_session):
+        """PATCH accepts German number format (comma decimal)."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "15,5",  # German format with comma
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify German format converted correctly
+        db_session.refresh(settings)
+        assert settings.initial_vacation_days == Decimal("15.5")
+
+    def test_patch_vacation_settings_german_date_format(self, client, db_session):
+        """PATCH accepts German date format (DD.MM.YYYY)."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "vacation_carryover_expires": "31.03.2026",  # German format
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        # Verify German format converted correctly
+        db_session.refresh(settings)
+        from datetime import date as date_type
+
+        assert settings.vacation_carryover_expires == date_type(2026, 3, 31)
+
+    def test_patch_vacation_settings_sets_hx_trigger(self, client, db_session):
+        """PATCH sets HX-Trigger: settingsUpdated header."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "15.5",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert "HX-Trigger" in response.headers
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+    def test_patch_vacation_settings_creates_if_not_exist(self, client, db_session):
+        """PATCH creates settings record if none exists for user."""
+        # No existing settings - should create one
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "initial_vacation_days": "15.5",
+                "annual_vacation_days": "30.0",
+            },
+        )
+
+        # May return 200 or 201 depending on implementation
+        assert response.status_code in [200, 201]
+
+    def test_get_settings_includes_vacation_fields(self, client, db_session):
+        """GET /settings renders vacation fields in German format."""
+        from datetime import date as date_type
+
+        # Create settings with vacation fields
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            initial_vacation_days=Decimal("15.5"),
+            annual_vacation_days=Decimal("30.0"),
+            vacation_carryover_days=Decimal("5.0"),
+            vacation_carryover_expires=date_type(2026, 3, 31),
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        # Should render vacation_carryover_expires in German format (DD.MM.YYYY)
+        assert "31.03.2026" in response.text
+        # Should render vacation days in German format (comma decimal)
+        assert "15,5" in response.text
+        assert "30,0" in response.text
+        assert "5,0" in response.text

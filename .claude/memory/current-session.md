@@ -1,12 +1,12 @@
 # Current Session State
 
 **Date**: 2026-01-30
-**Status**: COMPLETE - All-Time Balance Feature
+**Status**: COMPLETE - Vacation Tracking Feature
 **Branch**: main (uncommitted changes)
 
 ## Session Summary
 
-Fixed 27 bugs identified during testing, following TDD methodology and strict quality standards.
+Implemented vacation day tracking feature following German law (Bundesurlaubsgesetz) with comprehensive testing and documentation. Feature includes settings configuration, calculation service, and KPI display.
 
 ## Issues Fixed
 
@@ -94,10 +94,44 @@ Fixed 27 bugs identified during testing, following TDD methodology and strict qu
 - **93% coverage** (exceeds 80% requirement)
 - 7 pre-existing Playwright tests skipped (require localhost:8000)
 
+## Vacation Tracking Feature (2026-01-30)
+
+### Implementation Summary
+
+**Backend Components**:
+- `source/services/vacation_calculation.py` - VacationCalculationService with business logic
+- `source/database/models.py` - Added 4 vacation fields to UserSettings
+- `source/api/routers/settings.py` - PATCH /settings/vacation endpoint
+- Database migration: `3c6492af3a32_add_vacation_tracking_to_user_settings.py`
+
+**Frontend Components**:
+- `templates/partials/_settings_vacation.html` - Settings configuration form
+- `templates/partials/_browser_time_entries.html` - Vacation balance KPI card
+- `templates/pages/settings.html` - Integrated vacation settings section
+
+**Testing**:
+- `tests/test_vacation_calculation_service.py` - 23 unit tests
+- `tests/test_vacation_display.py` - 9 integration tests
+- `tests/test_settings.py` - 14 new tests for vacation endpoint
+
+**Business Rules**:
+- Initial balance and annual entitlement configuration
+- Carryover days with March 31 expiration (Bundesurlaubsgesetz)
+- Warning badges for expiring vacation days
+- Calculation includes used vacation days from time entries
+
+### Key Decisions
+
+- German law compliance: Carryover expiration on March 31
+- Warning threshold: 30 days before expiration
+- Vacation days counted from absence_type='vacation' time entries
+- KPI card displays remaining days with expiration warnings
+
 ## Quality Gates Status
 
 - [x] Tests passing (567/567)
 - [x] Coverage >= 80% (93.30%)
 - [x] Code formatted (Black + isort)
 - [x] Linting passes (ruff)
+- [x] CHANGELOG.md created and updated
 - [ ] Awaiting commit and code review

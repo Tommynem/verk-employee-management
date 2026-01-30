@@ -297,3 +297,135 @@ async def update_tracking_settings(
     response = HTMLResponse(content=html, status_code=200)
     response.headers["HX-Trigger"] = "settingsUpdated"
     return response
+
+
+@router.patch("/vacation", response_class=HTMLResponse)
+async def update_vacation_settings(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> HTMLResponse:
+    """Update vacation settings with optimistic locking.
+
+    Handles:
+    - initial_vacation_days: Decimal (e.g., 15.5)
+    - annual_vacation_days: Decimal (e.g., 30.0)
+    - vacation_carryover_days: Decimal (e.g., 5.0)
+    - vacation_carryover_expires: Date (e.g., 2026-03-31)
+
+    Supports German number format (comma as decimal separator).
+    Supports German date format (DD.MM.YYYY) with fallback to ISO.
+
+    Args:
+        request: FastAPI request object
+        db: Database session
+        user_id: Current user ID
+
+    Returns:
+        HTML response with vacation settings form partial
+
+    Raises:
+        HTTPException: 409 if stale timestamp, 422 if validation fails
+    """
+    # Get form data
+    form_data = await request.form()
+
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+
+    # Get or create settings
+    if not settings:
+        settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+        db.add(settings)
+        # For new settings, skip optimistic locking check
+    else:
+        # Optimistic locking: Require updated_at timestamp for existing settings
+        updated_at_str = form_data.get("updated_at")
+        if updated_at_str is None:
+            raise HTTPException(
+                status_code=422, detail="Zeitstempel (updated_at) ist erforderlich für die Aktualisierung"
+            )
+
+        # Parse updated_at timestamp
+        from datetime import datetime
+
+        try:
+            sent_updated_at = datetime.fromisoformat(str(updated_at_str))
+        except (ValueError, TypeError) as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zeitstempel") from e
+
+        # Check for concurrent modification (optimistic locking)
+        if settings.updated_at != sent_updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail="Einstellungen wurden zwischenzeitlich geändert. Bitte laden Sie die Seite neu.",
+            )
+
+    # Parse initial_vacation_days (German format: comma as decimal separator)
+    initial_days_str = form_data.get("initial_vacation_days", "")
+    if initial_days_str:
+        try:
+            # Convert German decimal format (comma) to standard (dot)
+            initial_days_str = str(initial_days_str).replace(",", ".")
+            initial_days = Decimal(initial_days_str)
+            if initial_days < Decimal("0"):
+                raise HTTPException(status_code=422, detail="Urlaubstage dürfen nicht negativ sein")
+            settings.initial_vacation_days = initial_days
+        except InvalidOperation as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zahlenwert") from e
+    else:
+        settings.initial_vacation_days = None
+
+    # Parse annual_vacation_days (German format)
+    annual_days_str = form_data.get("annual_vacation_days", "")
+    if annual_days_str:
+        try:
+            # Convert German decimal format
+            annual_days_str = str(annual_days_str).replace(",", ".")
+            annual_days = Decimal(annual_days_str)
+            if annual_days < Decimal("0"):
+                raise HTTPException(status_code=422, detail="Urlaubstage dürfen nicht negativ sein")
+            settings.annual_vacation_days = annual_days
+        except InvalidOperation as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zahlenwert") from e
+    else:
+        settings.annual_vacation_days = None
+
+    # Parse vacation_carryover_days (German format)
+    carryover_days_str = form_data.get("vacation_carryover_days", "")
+    if carryover_days_str:
+        try:
+            # Convert German decimal format
+            carryover_days_str = str(carryover_days_str).replace(",", ".")
+            carryover_days = Decimal(carryover_days_str)
+            if carryover_days < Decimal("0"):
+                raise HTTPException(status_code=422, detail="Urlaubstage dürfen nicht negativ sein")
+            settings.vacation_carryover_days = carryover_days
+        except InvalidOperation as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zahlenwert") from e
+    else:
+        settings.vacation_carryover_days = None
+
+    # Parse vacation_carryover_expires (German format: DD.MM.YYYY)
+    carryover_expires_str = form_data.get("vacation_carryover_expires", "")
+    if carryover_expires_str:
+        try:
+            # Try German date format DD.MM.YYYY first
+            from datetime import datetime
+
+            settings.vacation_carryover_expires = datetime.strptime(str(carryover_expires_str), "%d.%m.%Y").date()
+        except ValueError:
+            # Fallback to ISO format
+            try:
+                settings.vacation_carryover_expires = date.fromisoformat(str(carryover_expires_str))
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail="Ungültiges Datumsformat") from e
+    else:
+        settings.vacation_carryover_expires = None
+
+    db.commit()
+    db.refresh(settings)
+
+    html = render_template(request, "partials/_settings_vacation.html", settings=settings)
+    response = HTMLResponse(content=html, status_code=200)
+    response.headers["HX-Trigger"] = "settingsUpdated"
+    return response

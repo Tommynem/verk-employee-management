@@ -22,6 +22,7 @@ from source.database import calculations
 from source.database.enums import AbsenceType, RecordStatus
 from source.database.models import TimeEntry, UserSettings
 from source.services.time_calculation import TimeCalculationService
+from source.services.vacation_calculation import VacationCalculationService
 
 router = APIRouter(prefix="/time-entries", tags=["time-entries"])
 
@@ -326,6 +327,19 @@ async def list_time_entries(
         # Determine if viewing current month
         today = date.today()
         is_current_month = month == today.month and year == today.year
+
+        # Calculate vacation balance if settings configured
+        if (
+            settings.initial_vacation_days is not None
+            or settings.annual_vacation_days is not None
+            or settings.vacation_carryover_days is not None
+        ):
+            vacation_service = VacationCalculationService()
+            vacation_balance = vacation_service.calculate_balance(all_entries, settings, date.today())
+            vacation_warning = vacation_service.get_expiry_warning(vacation_balance, date.today())
+
+            context["vacation_balance"] = vacation_balance
+            context["vacation_warning"] = vacation_warning
 
         # Add all monthly context
         context.update(

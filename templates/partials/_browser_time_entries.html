@@ -96,7 +96,7 @@
 
 {# Summary cards if summary is available #}
 {% if summary %}
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-3 {% if vacation_balance %}lg:grid-cols-4{% endif %} gap-4 mb-6">
     {# Card 1: Monatssaldo (Total Actual) #}
     <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg">
         <div class="card-body p-6">
@@ -133,6 +133,23 @@
             {% endif %}
         </div>
     </div>
+
+    {# Card 4: Vacation Balance (only if vacation settings configured) #}
+    {% if vacation_balance %}
+    <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg">
+        <div class="card-body p-6">
+            <p class="text-sm text-base-content/70">Resturlaub</p>
+            <p class="text-3xl font-normal text-info">{{ vacation_balance.days_remaining|int }} Tage</p>
+            {% if vacation_warning %}
+            <div class="badge badge-{{ vacation_warning.severity }} badge-sm">
+                {{ vacation_warning.days_expiring|int }} Tage verfallen am {{ vacation_warning.expiry_date.strftime('%d.%m.%Y') }}
+            </div>
+            {% else %}
+            <p class="text-xs text-base-content/50">Verfügbar</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 {% endif %}

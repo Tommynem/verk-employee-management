@@ -1,0 +1,250 @@
+<div class="card bg-base-100 shadow-md border border-base-300 rounded-lg mb-6">
+    <div class="card-body">
+        <h2 class="card-title mb-4">Urlaub Einstellungen</h2>
+
+        <form id="vacation-settings-form"
+              hx-patch="/settings/vacation"
+              hx-target="#vacation-settings-form"
+              hx-swap="outerHTML">
+
+            {# Hidden field for optimistic locking #}
+            {% if settings %}
+            <input type="hidden" name="updated_at" value="{{ settings.updated_at.isoformat() }}" />
+            {% endif %}
+
+            <div class="form-control mb-4">
+                <label class="label" for="initial_vacation_days">
+                    <span class="label-text">Anfangssaldo Urlaub (Tage)</span>
+                </label>
+                <input type="text"
+                       id="initial_vacation_days"
+                       name="initial_vacation_days"
+                       value="{{ (settings.initial_vacation_days | string | replace('.', ',')) if settings and settings.initial_vacation_days is not none else '' }}"
+                       pattern="^\d+,?\d*$"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="15,5" />
+                <label class="label">
+                    <span class="label-text-alt">Urlaubssaldo zu Beginn der Erfassung</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label" for="annual_vacation_days">
+                    <span class="label-text">Jahresurlaub (Tage)</span>
+                </label>
+                <input type="text"
+                       id="annual_vacation_days"
+                       name="annual_vacation_days"
+                       value="{{ (settings.annual_vacation_days | string | replace('.', ',')) if settings and settings.annual_vacation_days is not none else '' }}"
+                       pattern="^\d+,?\d*$"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="30,0" />
+                <label class="label">
+                    <span class="label-text-alt">Vertraglich vereinbarter Jahresurlaub</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label" for="vacation_carryover_days">
+                    <span class="label-text">Übertrag (Tage)</span>
+                </label>
+                <input type="text"
+                       id="vacation_carryover_days"
+                       name="vacation_carryover_days"
+                       value="{{ (settings.vacation_carryover_days | string | replace('.', ',')) if settings and settings.vacation_carryover_days is not none else '' }}"
+                       pattern="^\d+,?\d*$"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="5,0" />
+                <label class="label">
+                    <span class="label-text-alt">Übertragene Urlaubstage aus dem Vorjahr</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label" for="vacation_carryover_expires">
+                    <span class="label-text">Übertrag verfällt am</span>
+                </label>
+                <input type="text"
+                       id="vacation_carryover_expires"
+                       name="vacation_carryover_expires"
+                       value="{{ settings.vacation_carryover_expires.strftime('%d.%m.%Y') if settings and settings.vacation_carryover_expires else '' }}"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="DD.MM.YYYY" />
+                <label class="label">
+                    <span class="label-text-alt">Verfallsdatum für übertragene Urlaubstage</span>
+                </label>
+            </div>
+
+            <div class="flex justify-end mt-6">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Flatpickr CSS and JS -->
+<link rel="stylesheet" href="/static/vendor/flatpickr/flatpickr.min.css">
+<script src="/static/vendor/flatpickr/flatpickr.min.js"></script>
+<script src="/static/vendor/flatpickr/l10n/de.js"></script>
+
+<script>
+(function() {
+    // Validation function for date input
+    function validateDateInput(value, instance) {
+        const input = instance.input;
+
+        // If empty, allow it (optional field)
+        if (!value || value.trim() === '') {
+            return true;
+        }
+
+        // Parse date components manually for validation
+        const datePattern = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/;
+        const match = value.match(datePattern);
+
+        if (!match) {
+            // Invalid format
+            alert('Ungültiges Datumsformat. Bitte DD.MM.YYYY verwenden.');
+            input.value = '';
+            instance.clear();
+            return false;
+        }
+
+        const day = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10);
+        const year = parseInt(match[3], 10);
+
+        // Validate date components BEFORE creating date object
+        if (month < 1 || month > 12) {
+            alert('Ungültiger Monat. Bitte Monat zwischen 1 und 12 eingeben.');
+            input.value = '';
+            instance.clear();
+            return false;
+        }
+
+        if (day < 1 || day > 31) {
+            alert('Ungültiger Tag. Bitte Tag zwischen 1 und 31 eingeben.');
+            input.value = '';
+            instance.clear();
+            return false;
+        }
+
+        // Check if date is actually valid (e.g., not Feb 31)
+        // CRITICAL: Compare the constructed date with the input values
+        const testDate = new Date(year, month - 1, day);
+        if (testDate.getDate() !== day ||
+            testDate.getMonth() !== (month - 1) ||
+            testDate.getFullYear() !== year) {
+            alert('Ungültiges Datum. Dieser Tag existiert nicht im angegebenen Monat.');
+            input.value = '';
+            instance.clear();
+            return false;
+        }
+
+        // Check against min/max bounds
+        const minDate = new Date(1900, 0, 1);
+        const maxDate = new Date(new Date().getFullYear() + 10, 11, 31);
+        if (testDate < minDate || testDate > maxDate) {
+            alert('Datum muss zwischen 01.01.1900 und ' +
+                  maxDate.toLocaleDateString('de-DE') + ' liegen.');
+            input.value = '';
+            instance.clear();
+            return false;
+        }
+
+        // Check if Flatpickr auto-corrected the date
+        // If the selected date doesn't match what user typed, reject it
+        if (instance.selectedDates.length > 0) {
+            const selectedDate = instance.selectedDates[0];
+            const selectedFormatted = selectedDate.getDate() + '.' +
+                                     (selectedDate.getMonth() + 1) + '.' +
+                                     selectedDate.getFullYear();
+            const inputFormatted = day + '.' + month + '.' + year;
+
+            if (selectedFormatted !== inputFormatted) {
+                // Flatpickr auto-corrected the date - reject it
+                alert('Ungültiges Datum. Bitte geben Sie ein gültiges Datum ein.');
+                input.value = '';
+                instance.clear();
+                return false;
+            }
+        }
+
+        // Valid date - ensure proper formatting
+        instance.setDate(testDate, true);
+        return true;
+    }
+
+    // Initialize flatpickr with German locale and validation
+    const fpInstance = flatpickr("#vacation_carryover_expires", {
+        locale: "de",
+        dateFormat: "d.m.Y",
+        allowInput: true,
+        // Set reasonable date bounds to prevent nonsensical dates
+        minDate: new Date(1900, 0, 1),
+        maxDate: new Date(new Date().getFullYear() + 10, 11, 31), // 10 years in future
+        // Enable year input to trigger calendar update
+        onYearChange: function(selectedDates, dateStr, instance) {
+            // Force calendar redraw when year changes via spinbutton
+            instance.redraw();
+        },
+        // Validate date when calendar closes OR when date changes
+        onChange: function(selectedDates, dateStr, instance) {
+            // Only validate if there's a selected date
+            if (selectedDates.length > 0 && instance.input.value) {
+                // Delay validation slightly to let Flatpickr finish processing
+                setTimeout(function() {
+                    validateDateInput(instance.input.value.trim(), instance);
+                }, 50);
+            }
+        },
+        onClose: function(selectedDates, dateStr, instance) {
+            if (instance.input.value) {
+                validateDateInput(instance.input.value.trim(), instance);
+            }
+        }
+    });
+
+    // Handle German number format conversion on form submit
+    const form = document.getElementById('vacation-settings-form');
+
+    form.addEventListener('htmx:configRequest', function(event) {
+        // Convert German decimal format to standard format before sending
+        const initialDays = document.getElementById('initial_vacation_days');
+        const annualDays = document.getElementById('annual_vacation_days');
+        const carryoverDays = document.getElementById('vacation_carryover_days');
+        const carryoverExpires = document.getElementById('vacation_carryover_expires');
+
+        // Store original values for restoration after submit
+        const originalInitialDays = initialDays.value;
+        const originalAnnualDays = annualDays.value;
+        const originalCarryoverDays = carryoverDays.value;
+        const originalCarryoverExpires = carryoverExpires.value;
+
+        // Convert comma to dot for numeric fields
+        if (initialDays.value) {
+            initialDays.value = initialDays.value.replace(',', '.');
+        }
+        if (annualDays.value) {
+            annualDays.value = annualDays.value.replace(',', '.');
+        }
+        if (carryoverDays.value) {
+            carryoverDays.value = carryoverDays.value.replace(',', '.');
+        }
+
+        // Convert DD.MM.YYYY to YYYY-MM-DD for date field
+        if (carryoverExpires.value && carryoverExpires.value.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) {
+            const parts = carryoverExpires.value.split('.');
+            carryoverExpires.value = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+
+        // Restore original values after HTMX reads them
+        setTimeout(function() {
+            initialDays.value = originalInitialDays;
+            annualDays.value = originalAnnualDays;
+            carryoverDays.value = originalCarryoverDays;
+            carryoverExpires.value = originalCarryoverExpires;
+        }, 0);
+    });
+})();
+</script>

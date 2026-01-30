@@ -78,6 +78,12 @@ class UserSettings(Base):
     tracking_start_date: date | None = Column(Date, nullable=True)
     initial_hours_offset: Decimal | None = Column(Numeric(6, 2), nullable=True)
 
+    # Vacation tracking
+    initial_vacation_days: Decimal | None = Column(Numeric(5, 2), nullable=True)
+    annual_vacation_days: Decimal | None = Column(Numeric(5, 2), nullable=True)
+    vacation_carryover_days: Decimal | None = Column(Numeric(5, 2), nullable=True)
+    vacation_carryover_expires: date | None = Column(Date, nullable=True)
+
     # Timestamps
     created_at: datetime = Column(DateTime, default=func.now(), nullable=False)
     updated_at: datetime = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)

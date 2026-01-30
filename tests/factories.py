@@ -94,6 +94,10 @@ class UserSettingsFactory(factory.Factory):
     schedule_json = None
     tracking_start_date = None
     initial_hours_offset = None
+    initial_vacation_days = None
+    annual_vacation_days = None
+    vacation_carryover_days = None
+    vacation_carryover_expires = None
     created_at = factory.LazyFunction(datetime.now)
     updated_at = factory.LazyFunction(datetime.now)
 

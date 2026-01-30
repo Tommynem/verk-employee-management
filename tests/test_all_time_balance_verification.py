@@ -290,7 +290,9 @@ def test_all_time_balance_matches_excel():
 
         print(f"\n{month_name} {year}:")
         print(f"  Calculated: carryover_in={summary.carryover_in:>6}, carryover_out={summary.carryover_out:>6}")
-        print(f"  Excel:      carryover_in={excel_data.get('carryover_in', 'N/A'):>6}, carryover_out={excel_data.get('carryover_out', 'N/A'):>6}")
+        print(
+            f"  Excel:      carryover_in={excel_data.get('carryover_in', 'N/A'):>6}, carryover_out={excel_data.get('carryover_out', 'N/A'):>6}"
+        )
 
         if excel_data:
             diff_in = summary.carryover_in - excel_data["carryover_in"]
@@ -381,7 +383,7 @@ def test_december_detailed_analysis():
     # Calculate December summary
     december_summary = service.monthly_summary(time_entries, settings, 2025, 12)
 
-    print(f"\nDecember Summary:")
+    print("\nDecember Summary:")
     print(f"  Actual Hours:    {december_summary.total_actual}")
     print(f"  Target Hours:    {december_summary.total_target}")
     print(f"  Period Balance:  {december_summary.period_balance}")
@@ -389,13 +391,13 @@ def test_december_detailed_analysis():
     print(f"  Carryover Out:   {december_summary.carryover_out}")
 
     print("\nExpected from Excel:")
-    print(f"  Carryover In:    17.07 (17:04)")
-    print(f"  Carryover Out:   19.50 (19:30)")
-    print(f"  Expected Period Balance: 19.50 - 17.07 = 2.43")
+    print("  Carryover In:    17.07 (17:04)")
+    print("  Carryover Out:   19.50 (19:30)")
+    print("  Expected Period Balance: 19.50 - 17.07 = 2.43")
 
-    print(f"\nDiscrepancy:")
+    print("\nDiscrepancy:")
     print(f"  Calculated Period Balance: {december_summary.period_balance}")
-    print(f"  Expected Period Balance:   2.43")
+    print("  Expected Period Balance:   2.43")
     print(f"  Difference:                {december_summary.period_balance - Decimal('2.43')}")
 
     # Analyze each December entry
