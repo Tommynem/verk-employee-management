@@ -1,137 +1,84 @@
 # Current Session State
 
 **Date**: 2026-01-30
-**Status**: COMPLETE - Vacation Tracking Feature
+**Status**: Bug Hunting Session - COMPLETE
 **Branch**: main (uncommitted changes)
+**Active Agents**: test-runner, python-dev, code-reviewer, debugger
+**Primary Focus**: Fix break calculation bug + comprehensive business logic review
 
 ## Session Summary
 
-Implemented vacation day tracking feature following German law (Bundesurlaubsgesetz) with comprehensive testing and documentation. Feature includes settings configuration, calculation service, and KPI display.
+Successfully fixed the known break bug and performed comprehensive code review. Discovered additional issues for future work.
 
-## Issues Fixed
+## Completed Work
 
-### Critical (12 → 0 open)
-| ID | Description | Status |
-|----|-------------|--------|
-| C1 | Silent Save Failure for Empty Tracking Values | Already working |
-| C2 | End Time Before Start Time Accepted | **FIXED** |
-| C3 | Disabling All Weekdays Doesn't Persist | Already working |
-| C4 | Weekly Summary Shows Wrong Week | **FIXED** |
-| C5 | Non-existent Time Entry Returns JSON | **FIXED** |
-| C6 | Invalid Query Parameters Return JSON | **FIXED** |
-| C7 | No Double-Click Protection | **FIXED** |
-| C8 | Mobile Touch Targets Too Small | **FIXED** |
-| C11 | Last-Write-Wins Race Condition | **FIXED** (optimistic locking) |
-| C12 | Settings Race Condition | **FIXED** (optimistic locking) |
-| C13 | Gleitzeit Button Does Nothing | Already working |
-| C14 | Form Labels Missing `for` Attribute | **FIXED** |
+### 1. Break Bug Fix (COMPLETE)
+**Bug**: Weekend days and national holidays with 0 working hours still inserted 30min break.
 
-### Major (17 → 2 deferred)
-| ID | Description | Status |
-|----|-------------|--------|
-| M1 | Invalid Time Values Accepted | Already working |
-| M2 | No Real-Time Calculation in Edit Mode | Deferred (design decision) |
-| M3 | No User Feedback for Invalid Date Format | **FIXED** (M17) |
-| M4 | No Error Message When Weekday Save Fails | Already working |
-| M5 | Inconsistent Terminology in Monthly Summary | Deferred (design decision) |
-| M6 | Import Month Mismatch - Poor Error Handling | **FIXED** |
-| M7 | Import Fails Silently with Skip Existing | Already working |
-| M8 | Year Boundary Navigation Shows [object Object] | **FIXED** |
-| M9 | No Unsaved Changes Warning | **FIXED** |
-| M10 | Export Endpoint Validation Errors Return JSON | **FIXED** |
-| M11 | No Horizontal Scroll Indicator on Mobile | **FIXED** |
-| M12 | Header Navigation Text Cutoff at 320px | **FIXED** |
-| M13 | Stale Data After Concurrent Updates | **FIXED** (via C11/C12) |
-| M14 | Delete HTMX Error When Entry in Edit Mode | **FIXED** |
-| M15 | Confusing Actual Hours Display for Vacation/Sick | **FIXED** |
-| M16 | Date Picker Year Navigation Broken | **FIXED** |
-| M17 | Invalid Date Input Accepted Without Validation | **FIXED** |
+**Root Cause**: `source/api/routers/time_entries.py` line 414 - `default_break_minutes = 30` not updated when `day_defaults` was None.
 
-### Minor (8 → 4 deferred)
-| ID | Description | Status |
-|----|-------------|--------|
-| m1 | Inconsistent Calculation Display in Edit Mode | Deferred |
-| m2 | Duplicate Note Text Display | **FIXED** |
-| m3 | Negative Hours Accepted for Initial Balance | By design (intentional) |
-| m4 | Draft Indicator Missing on Empty Months | Deferred |
-| m5 | No Client-Side Validation for File Selection | Deferred |
-| m6 | No Edit Mode Locking Indicator | Deferred |
-| m7 | No Visual Feedback for Active Absence Type | Already working |
-| m8 | Draft Submission Workflow Incomplete | Deferred (design decision) |
+**Fix**: Added logic to set `default_break_minutes = 0` when:
+- Weekday is disabled in settings (day_defaults is None)
+- Date is a German public holiday (using `is_holiday()`)
+
+**Tests**: Created `tests/test_break_bug_nonworking_days.py` with 6 tests (all passing)
+- 4 tests for the bug scenarios
+- 2 regression tests to ensure existing behavior preserved
+
+### 2. Code Review Findings
+
+**By Design (Not Bugs):**
+- Overnight shift rejection - validation correctly rejects `end_time <= start_time`
+
+**Pre-existing Issues Found:**
+1. **Public Holiday Target Hours** (`calculations.py:72-73`) - Days that ARE German public holidays don't automatically get target=0; requires manual `absence_type=HOLIDAY`
+2. **Excel Balance Discrepancy** - `test_all_time_balance_matches_excel` shows 6.38h difference from Excel reference (pre-existing, unrelated to our changes)
+3. **Empty schedule_json Edge Case** - When no weekday defaults configured, weekends still default to 30min break
+
+**Other Issues Identified by Code Review:**
+- Vacation entitlement calculation uses full years only (may not match proportional German law expectations)
+- Holiday detection missing in `weekly_summary` for days without entries
+- Potential precision issues with float division in validation
+
+### 3. Playwright Testing
+
+**Verified Working:**
+- Break bug fix works in UI
+- Weekend days show break=0
+- German holidays show break=0
+- Absence type calculations (vacation, sick, holiday) work correctly
+- Weekly/monthly summaries display correctly
 
 ## Files Modified
 
-### Backend
-- `source/api/app.py` - Exception handlers for HTML error pages
-- `source/api/routers/time_entries.py` - Weekly summary context, year boundaries, optimistic locking
-- `source/api/routers/settings.py` - End time validation, optimistic locking
-- `source/api/routers/data_transfer.py` - Month mismatch validation
-- `source/api/schemas/time_entry.py` - Added updated_at field
-- `source/services/data_transfer/import_service.py` - Month validation
-
-### Frontend
-- `templates/base.html` - Responsive header
-- `templates/pages/422.html` - New validation error page
-- `templates/partials/_browser_time_entries.html` - Scroll indicator, dirty state JS
-- `templates/partials/_row_time_entry.html` - Touch targets, optimistic locking
-- `templates/partials/_row_time_entry_edit.html` - Touch targets, optimistic locking, delete fix
-- `templates/partials/_settings_tracking.html` - Labels, date validation, optimistic locking
-- `templates/partials/_settings_weekday_defaults.html` - Optimistic locking
-- `templates/components/_modal_confirm_delete.html` - Touch targets
-- `tailwind.config.js` - Added xs breakpoint
-
-### Tests Added
-- `tests/test_validation_bugs.py` - Validation tests (20 tests)
-- `tests/test_error_handling.py` - Error response tests (15 tests)
-- `tests/test_api_time_entries.py` - Weekly summary and boundary tests (7 tests)
-- `tests/test_import_issues.py` - Import validation tests (6 tests)
-- `tests/test_optimistic_locking.py` - Race condition tests (10 tests)
-- `tests/test_issue_m15_template_fix.py` - Absence display tests (6 tests)
+- `source/api/routers/time_entries.py` - Break bug fix (lines 425-437)
+- `tests/test_break_bug_nonworking_days.py` - New test file (6 tests)
 
 ## Test Results
 
-- **567 tests passing**
-- **93% coverage** (exceeds 80% requirement)
-- 7 pre-existing Playwright tests skipped (require localhost:8000)
-
-## Vacation Tracking Feature (2026-01-30)
-
-### Implementation Summary
-
-**Backend Components**:
-- `source/services/vacation_calculation.py` - VacationCalculationService with business logic
-- `source/database/models.py` - Added 4 vacation fields to UserSettings
-- `source/api/routers/settings.py` - PATCH /settings/vacation endpoint
-- Database migration: `3c6492af3a32_add_vacation_tracking_to_user_settings.py`
-
-**Frontend Components**:
-- `templates/partials/_settings_vacation.html` - Settings configuration form
-- `templates/partials/_browser_time_entries.html` - Vacation balance KPI card
-- `templates/pages/settings.html` - Integrated vacation settings section
-
-**Testing**:
-- `tests/test_vacation_calculation_service.py` - 23 unit tests
-- `tests/test_vacation_display.py` - 9 integration tests
-- `tests/test_settings.py` - 14 new tests for vacation endpoint
-
-**Business Rules**:
-- Initial balance and annual entitlement configuration
-- Carryover days with March 31 expiration (Bundesurlaubsgesetz)
-- Warning badges for expiring vacation days
-- Calculation includes used vacation days from time entries
-
-### Key Decisions
-
-- German law compliance: Carryover expiration on March 31
-- Warning threshold: 30 days before expiration
-- Vacation days counted from absence_type='vacation' time entries
-- KPI card displays remaining days with expiration warnings
+- **619 tests passed** (excluding Playwright tests requiring localhost:8000)
+- **93% coverage** maintained
+- 1 pre-existing failure (`test_all_time_balance_matches_excel`)
+- 7 Playwright tests skipped (wrong port)
 
 ## Quality Gates Status
 
-- [x] Tests passing (567/567)
-- [x] Coverage >= 80% (93.30%)
-- [x] Code formatted (Black + isort)
-- [x] Linting passes (ruff)
-- [x] CHANGELOG.md created and updated
-- [ ] Awaiting commit and code review
+- [x] Tests passing (excluding pre-existing Excel discrepancy)
+- [x] Break bug fixed with TDD (RED-GREEN)
+- [x] Code review complete
+- [x] Business logic weak spots identified
+- [x] Playwright verification complete
+- [ ] Awaiting commit
+
+## Recommendations for Future Work
+
+### Priority 1 (Should Fix Soon)
+1. Auto-detect public holidays for target hours in `calculations.target_hours()`
+2. Investigate Excel balance discrepancy (6.38h difference)
+
+### Priority 2 (Consider)
+3. Handle empty schedule_json for weekend detection
+4. Clarify vacation entitlement calculation logic (full years vs proportional)
+
+### Priority 3 (Low)
+5. Add validation to prevent break_minutes > 0 when no work times set

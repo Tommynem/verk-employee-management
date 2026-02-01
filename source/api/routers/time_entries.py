@@ -426,6 +426,15 @@ async def new_row(
                 default_start_time = day_defaults.get("start_time")
                 default_end_time = day_defaults.get("end_time")
                 default_break_minutes = day_defaults.get("break_minutes", 30)
+            else:
+                # Non-working day (disabled in settings) - no break time
+                default_break_minutes = 0
+
+        # Check for German public holidays - override break time to 0
+        from source.core.holidays import is_holiday
+
+        if is_holiday(default_date):
+            default_break_minutes = 0
 
     html = render_template(
         request,
