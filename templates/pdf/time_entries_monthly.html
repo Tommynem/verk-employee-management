@@ -270,23 +270,23 @@
 
                 <!-- Actual hours -->
                 <td class="col-actual mono">
-                    {{ "%.2f"|format(entry.actual_hours|float) }}h
+                    {{ entry.actual_hours|format_hours }}
                 </td>
 
                 <!-- Target hours -->
                 <td class="col-target mono">
-                    {{ "%.2f"|format(entry.target_hours|float) }}h
+                    {{ entry.target_hours|format_hours }}
                 </td>
 
                 <!-- Balance -->
                 <td class="col-balance mono">
-                    {% set balance_float = entry.balance|float %}
-                    {% if balance_float > 0 %}
-                        <span class="balance-positive">+{{ "%.2f"|format(balance_float) }}h</span>
-                    {% elif balance_float < 0 %}
-                        <span class="balance-negative">{{ "%.2f"|format(balance_float) }}h</span>
+                    {% set balance_val = entry.balance %}
+                    {% if balance_val > 0 %}
+                        <span class="balance-positive">{{ balance_val|format_balance }}</span>
+                    {% elif balance_val < 0 %}
+                        <span class="balance-negative">{{ balance_val|format_balance }}</span>
                     {% else %}
-                        <span class="balance-zero">{{ "%.2f"|format(balance_float) }}h</span>
+                        <span class="balance-zero">{{ balance_val|format_balance }}</span>
                     {% endif %}
                 </td>
 
@@ -326,16 +326,16 @@
         <div class="summary-grid">
             <div class="summary-item">
                 <div class="summary-label">Monatssaldo (Arbeitsstunden Real)</div>
-                <div class="summary-value">{{ "%.2f"|format(summary.total_actual|float) }}h</div>
+                <div class="summary-value">{{ summary.total_actual|format_hours }}</div>
             </div>
             <div class="summary-item">
                 <div class="summary-label">Sollstunden</div>
-                <div class="summary-value">{{ "%.2f"|format(summary.total_target|float) }}h</div>
+                <div class="summary-value">{{ summary.total_target|format_hours }}</div>
             </div>
             <div class="summary-item">
                 <div class="summary-label">Endsaldo</div>
-                <div class="summary-value {% if summary.carryover_out|float >= 0 %}positive{% else %}negative{% endif %}">
-                    {% if summary.carryover_out|float >= 0 %}+{% endif %}{{ "%.2f"|format(summary.carryover_out|float) }}h
+                <div class="summary-value {% if summary.carryover_out >= 0 %}positive{% else %}negative{% endif %}">
+                    {{ summary.carryover_out|format_balance }}
                 </div>
             </div>
         </div>

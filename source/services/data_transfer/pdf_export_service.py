@@ -10,6 +10,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from source.api.context import format_balance, format_hours
 from source.database.models import TimeEntry, UserSettings
 from source.documents.pdf_generator import PDFGenerator
 from source.services.data_transfer.dataclasses import ExportResult
@@ -61,6 +62,9 @@ def get_template_env() -> Environment:
     env = Environment(loader=FileSystemLoader("templates"))
     # Add 'now' function for timestamp
     env.globals["now"] = datetime.now
+    # Register custom filters for HH:MM time formatting
+    env.filters["format_hours"] = format_hours
+    env.filters["format_balance"] = format_balance
     return env
 
 
@@ -82,7 +86,7 @@ class PDFExportService:
         """Export time entries for a month as PDF.
 
         Args:
-            entries: List of TimeEntry instances for the month
+            entries: List of ALL TimeEntry instances (for carryover calculation)
             settings: UserSettings with weekly_target_hours
             user_id: User ID for filename
             year: Year of the month
@@ -91,9 +95,15 @@ class PDFExportService:
         Returns:
             ExportResult with PDF bytes and metadata
         """
-        # Prepare entry data for template
+        # Filter entries to only show the requested month
+        month_entries = [
+            e for e in entries
+            if e.work_date.year == year and e.work_date.month == month
+        ]
+
+        # Prepare entry data for template (only current month)
         prepared_entries = []
-        for entry in entries:
+        for entry in month_entries:
             weekday = GERMAN_WEEKDAYS[entry.work_date.weekday()]
             actual_hours = self.calc_service.actual_hours(entry)
             target_hours = self.calc_service.target_hours(entry, settings)

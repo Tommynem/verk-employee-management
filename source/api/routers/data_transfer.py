@@ -71,9 +71,24 @@ async def export_time_entries(
 
             settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
 
+        # Query ALL historical entries for carryover calculation
+        # The monthly_summary method needs all entries to calculate carryover using all_time_balance
+        if settings.tracking_start_date:
+            all_entries = (
+                db.query(TimeEntry)
+                .filter(
+                    TimeEntry.user_id == user_id,
+                    TimeEntry.work_date >= settings.tracking_start_date,
+                )
+                .order_by(TimeEntry.work_date.asc())
+                .all()
+            )
+        else:
+            all_entries = entries  # Fall back to just the month's entries
+
         # Use PDF export service
         pdf_service = PDFExportService()
-        result = await pdf_service.export_pdf(entries, settings, user_id, year, month)
+        result = await pdf_service.export_pdf(all_entries, settings, user_id, year, month)
     else:
         # Use CSV export service
         csv_service = ExportService()
