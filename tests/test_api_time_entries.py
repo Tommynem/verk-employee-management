@@ -297,6 +297,50 @@ class TestTimeEntryUpdate:
         assert "HX-Trigger" in response.headers
         assert response.headers["HX-Trigger"] == "timeEntryUpdated"
 
+    def test_update_entry_clear_time_fields_with_empty_string(self, client, db_session):
+        """PATCH with empty string for start_time/end_time should clear the fields.
+
+        Bug: Editing an existing weekday entry and clearing time fields should set them to None.
+        This tests that empty string "" is correctly converted to None in the database.
+        """
+        from source.database.models import TimeEntry
+
+        # Create entry with existing times
+        entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=30,
+        )
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        # Verify entry has times before update
+        assert entry.start_time == time(8, 0)
+        assert entry.end_time == time(16, 0)
+
+        # Send PATCH with empty strings (simulates form input being cleared)
+        response = client.patch(
+            f"/time-entries/{entry.id}",
+            data={
+                "start_time": "",
+                "end_time": "",
+                "updated_at": entry.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+
+        # Refresh entry from database
+        db_session.expire_all()
+        updated_entry = db_session.query(TimeEntry).filter(TimeEntry.id == entry.id).first()
+
+        # Times should now be None
+        assert updated_entry.start_time is None
+        assert updated_entry.end_time is None
+
 
 class TestTimeEntryDelete:
     """Test DELETE /time-entries/{id} deletion endpoint."""

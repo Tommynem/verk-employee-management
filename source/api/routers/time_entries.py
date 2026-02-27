@@ -756,26 +756,20 @@ async def update_time_entry(
     entry_id: int,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
-    start_time: str | None = Form(None),
-    end_time: str | None = Form(None),
-    break_minutes: int | None = Form(None),
-    absence_type: str | None = Form(None),
-    notes: str | None = Form(None),
-    updated_at: str | None = Form(None),
 ) -> HTMLResponse:
     """Update time entry with optimistic locking.
+
+    Note: We parse form data manually instead of using Form() parameters because
+    FastAPI Form() with str | None = Form(None) treats empty strings as None,
+    making it impossible to distinguish "field not sent" from "field cleared".
+    We need to detect when a user clears a time field (sends empty string) vs
+    not including it in the request at all.
 
     Args:
         request: FastAPI request object
         entry_id: Time entry ID
         db: Database session
         user_id: Current user ID from auth
-        start_time: Optional updated start time
-        end_time: Optional updated end time
-        break_minutes: Optional updated break minutes
-        absence_type: Optional updated absence type
-        notes: Optional updated notes
-        updated_at: Timestamp for optimistic locking (ISO format)
 
     Returns:
         HTML response with updated detail view
@@ -783,12 +777,16 @@ async def update_time_entry(
     Raises:
         HTTPException: 404 if entry not found, 409 if stale timestamp, 422 if entry is submitted or validation fails
     """
+    # Parse form data manually to distinguish empty string from absent field
+    form_data = await request.form()
+
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id, TimeEntry.user_id == user_id).first()
 
     if not entry:
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
 
-    # Optimistic locking: Require updated_at timestamp
+    # Extract updated_at for optimistic locking
+    updated_at = form_data.get("updated_at")
     if updated_at is None:
         raise HTTPException(status_code=422, detail="Zeitstempel (updated_at) ist erforderlich für die Aktualisierung")
 
@@ -812,28 +810,33 @@ async def update_time_entry(
         raise HTTPException(status_code=422, detail="Eingereichte Einträge können nicht bearbeitet werden")
 
     try:
-        # Parse time strings if provided
-        parsed_start_time = entry.start_time
-        parsed_end_time = entry.end_time
-
-        if start_time is not None:
-            parsed_start_time = parse_time_string(start_time, "Startzeit")
-
-        if end_time is not None:
-            parsed_end_time = parse_time_string(end_time, "Endzeit")
-
-        # Build update data
+        # Build update data - check if field was sent in form_data (even if empty)
+        # This allows distinguishing "field not sent" from "field cleared"
         update_dict = {}
-        if start_time is not None:
-            update_dict["start_time"] = parsed_start_time
-        if end_time is not None:
-            update_dict["end_time"] = parsed_end_time
-        if break_minutes is not None:
-            update_dict["break_minutes"] = break_minutes
-        if absence_type is not None:
-            update_dict["absence_type"] = AbsenceType(absence_type)
-        if notes is not None:
-            update_dict["notes"] = notes
+
+        # Handle time fields - empty string means "clear the field"
+        if "start_time" in form_data:
+            start_time_value = form_data.get("start_time")
+            update_dict["start_time"] = parse_time_string(start_time_value, "Startzeit")
+
+        if "end_time" in form_data:
+            end_time_value = form_data.get("end_time")
+            update_dict["end_time"] = parse_time_string(end_time_value, "Endzeit")
+
+        # Handle other fields
+        if "break_minutes" in form_data:
+            break_minutes_value = form_data.get("break_minutes")
+            if break_minutes_value:
+                update_dict["break_minutes"] = int(break_minutes_value)
+
+        if "absence_type" in form_data:
+            absence_type_value = form_data.get("absence_type")
+            if absence_type_value:
+                update_dict["absence_type"] = AbsenceType(absence_type_value)
+
+        if "notes" in form_data:
+            notes_value = form_data.get("notes")
+            update_dict["notes"] = notes_value if notes_value else None
 
         # Validate with Pydantic schema
         if update_dict:
