@@ -275,18 +275,34 @@ async def update_tracking_settings(
     else:
         settings.tracking_start_date = None
 
-    # Parse initial_hours_offset (German format)
+    # Parse initial_hours_offset (HH:MM format, e.g., "24:20" or "-5:30")
     offset_str = form_data.get("initial_hours_offset", "")
     if offset_str:
+        offset_str = str(offset_str).strip()
         try:
-            # Convert German decimal format
-            offset_str = str(offset_str).replace(",", ".")
-            offset = Decimal(offset_str)
+            # Parse HH:MM format (supports negative values like "-5:30")
+            import re
+
+            match = re.match(r"^(-?)(\d+):(\d{2})$", offset_str)
+            if match:
+                sign = -1 if match.group(1) == "-" else 1
+                hours = int(match.group(2))
+                minutes = int(match.group(3))
+                if minutes >= 60:
+                    raise HTTPException(status_code=422, detail="Minuten müssen zwischen 0 und 59 liegen")
+                # Convert to decimal hours
+                offset = sign * (Decimal(hours) + Decimal(minutes) / Decimal(60))
+                offset = offset.quantize(Decimal("0.01"))
+            else:
+                # Fallback: try German decimal format for backwards compatibility
+                offset_str = offset_str.replace(",", ".")
+                offset = Decimal(offset_str)
+
             if offset < Decimal("-999.99") or offset > Decimal("999.99"):
-                raise HTTPException(status_code=422, detail="Saldo muss zwischen -999,99 und 999,99 liegen")
+                raise HTTPException(status_code=422, detail="Saldo muss zwischen -999:59 und 999:59 liegen")
             settings.initial_hours_offset = offset
         except InvalidOperation as e:
-            raise HTTPException(status_code=422, detail="Ungültiger Zahlenwert") from e
+            raise HTTPException(status_code=422, detail="Ungültiges Format. Bitte HH:MM verwenden (z.B. 24:20)") from e
     else:
         settings.initial_hours_offset = None
 

@@ -578,8 +578,8 @@ class TestTrackingSettingsUpdate:
         assert response.status_code == 200
         # Should render tracking_start_date in German format (DD.MM.YYYY)
         assert "15.01.2026" in response.text
-        # Should render initial_hours_offset in German format (comma decimal)
-        assert "15,50" in response.text
+        # Should render initial_hours_offset in HH:MM format (15.50h = 15:30)
+        assert "15:30" in response.text
         # Should render weekly_target_hours in German format
         assert "40,00" in response.text
 
@@ -606,6 +606,47 @@ class TestTrackingSettingsUpdate:
         db_session.refresh(settings)
         assert settings.initial_hours_offset == Decimal("-15.50")
 
+    def test_patch_tracking_settings_hhmm_format(self, client, db_session):
+        """PATCH accepts HH:MM format for initial_hours_offset."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        # Test 24:20 (24 hours 20 minutes = 24.333... hours)
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "initial_hours_offset": "24:20",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        db_session.refresh(settings)
+        # 24:20 = 24 + 20/60 = 24.3333... → quantized to 24.33
+        assert settings.initial_hours_offset == Decimal("24.33")
+
+    def test_patch_tracking_settings_hhmm_negative_format(self, client, db_session):
+        """PATCH accepts negative HH:MM format for initial_hours_offset."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        # Test -5:30 (negative 5 hours 30 minutes = -5.5 hours)
+        response = client.patch(
+            "/settings/tracking",
+            data={
+                "initial_hours_offset": "-5:30",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        db_session.refresh(settings)
+        assert settings.initial_hours_offset == Decimal("-5.50")
+
     def test_patch_tracking_settings_creates_settings_if_not_exist(self, client, db_session):
         """PATCH creates settings record if none exists for user."""
         # No existing settings - should create one
@@ -613,7 +654,7 @@ class TestTrackingSettingsUpdate:
             "/settings/tracking",
             data={
                 "tracking_start_date": "2026-01-15",
-                "initial_hours_offset": "10.00",
+                "initial_hours_offset": "10:00",
             },
         )
 

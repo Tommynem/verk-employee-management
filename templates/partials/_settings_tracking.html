@@ -46,17 +46,17 @@
 
             <div class="form-control mb-4">
                 <label class="label" for="initial_hours_offset">
-                    <span class="label-text">Anfangssaldo (Stunden)</span>
+                    <span class="label-text">Anfangssaldo</span>
                 </label>
                 <input type="text"
                        id="initial_hours_offset"
                        name="initial_hours_offset"
-                       value="{{ (settings.initial_hours_offset | string | replace('.', ',')) if settings and settings.initial_hours_offset is not none else '' }}"
-                       pattern="^-?\d+,?\d*$"
+                       value="{% if settings and settings.initial_hours_offset is not none %}{% set total_mins = (settings.initial_hours_offset * 60) | round(0, 'common') | int %}{% set sign = '-' if total_mins < 0 else '' %}{% set abs_mins = total_mins | abs %}{{ sign }}{{ '%d:%02d' | format(abs_mins // 60, abs_mins % 60) }}{% endif %}"
+                       pattern="^-?\d+:\d{2}$"
                        class="input input-bordered w-full max-w-xs"
-                       placeholder="0,00" />
+                       placeholder="0:00" />
                 <label class="label">
-                    <span class="label-text-alt">Überstundensaldo am Erfassungsbeginn</span>
+                    <span class="label-text-alt">Überstundensaldo am Erfassungsbeginn (Format: HH:MM, z.B. 24:20 oder -5:30)</span>
                 </label>
             </div>
 
@@ -208,9 +208,8 @@
         if (weeklyHours.value) {
             weeklyHours.value = weeklyHours.value.replace(',', '.');
         }
-        if (initialOffset.value) {
-            initialOffset.value = initialOffset.value.replace(',', '.');
-        }
+
+        // initial_hours_offset is sent as HH:MM, backend will parse it
 
         // Convert DD.MM.YYYY to YYYY-MM-DD for date field
         if (trackingDate.value && trackingDate.value.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) {
