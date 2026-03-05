@@ -75,7 +75,29 @@
         if (xhr.status === 422) {
             try {
                 const response = JSON.parse(xhr.responseText);
-                showToast(response.detail || 'Validierungsfehler', 'error');
+                let message = 'Validierungsfehler';
+
+                if (response.detail && Array.isArray(response.detail)) {
+                    // Extract the first error message and field name
+                    const firstError = response.detail[0];
+                    let errorMsg = firstError.msg || 'Ungültige Eingabe';
+
+                    // Translate common Pydantic validation errors
+                    if (errorMsg.includes('Field required')) {
+                        errorMsg = 'Feld erforderlich';
+                    } else if (errorMsg.includes('Input should be')) {
+                        errorMsg = errorMsg.replace('Input should be', 'Eingabe sollte').replace('a valid', 'ein gültiges').replace(', unable to parse string as an integer', ' sein');
+                    } else if (errorMsg.includes('value is not a valid')) {
+                        errorMsg = 'Wert ist ungültig';
+                    }
+
+                    const field = firstError.loc && firstError.loc.length > 0 ? firstError.loc[firstError.loc.length - 1] : 'Feld';
+                    message = `Ungültiger Wert für '${field}': ${errorMsg}`;
+                } else if (response.detail && typeof response.detail === 'string') {
+                    message = response.detail;
+                }
+
+                showToast(message, 'error');
             } catch {
                 showToast('Validierungsfehler', 'error');
             }
