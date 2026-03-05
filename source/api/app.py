@@ -120,6 +120,15 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             first_error = error_details[0]
             field = first_error.get("loc", ["unknown"])[-1]
             msg = first_error.get("msg", "")
+
+            # Translate common Pydantic validation errors
+            if "Field required" in msg:
+                msg = "Feld erforderlich"
+            elif "Input should be" in msg:
+                msg = msg.replace("Input should be", "Eingabe sollte").replace("a valid", "ein gültiges").replace(", unable to parse string as an integer", " sein")
+            elif "value is not a valid" in msg:
+                msg = "Wert ist ungültig"
+
             error_message = f"Ungültiger Wert für '{field}': {msg}"
 
         return templates.TemplateResponse(
