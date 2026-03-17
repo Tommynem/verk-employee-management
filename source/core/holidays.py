@@ -7,6 +7,7 @@ The Easter calculation uses the Meeus/Jones/Butcher algorithm which is valid
 for years 1583-4099 in the Gregorian calendar.
 """
 
+import functools
 from datetime import date, timedelta
 
 
@@ -45,6 +46,7 @@ def calculate_easter(year: int) -> date:
     return date(year, month, day)
 
 
+@functools.lru_cache(maxsize=12)
 def get_german_holidays(year: int) -> dict[date, str]:
     """Get all German nationwide public holidays for a given year.
 
