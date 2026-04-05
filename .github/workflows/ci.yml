@@ -1,0 +1,109 @@
+name: CI
+
+# Stage 1 CI for verk-employee-management.
+# Blocking checks mirror local `make ci` closely enough that a local pass
+# predicts a passing GitHub blocking pipeline.
+# Advisory checks provide visibility without blocking merges.
+# See docs/ci-strategy.md for the operating model behind this workflow.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'source/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tailwind.config.js'
+      - 'static/css/input.css'
+      - '.github/workflows/ci.yml'
+      - 'Makefile'
+      - 'docs/ci-strategy.md'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  blocking:
+    name: "Blocking: Lint, Format & Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: uv sync --group main --group dev
+
+      - name: Install Node dependencies
+        run: npm ci || npm install
+
+      - name: Check code formatting (black)
+        run: uv run black --check --line-length=120 source tests
+
+      - name: Check import sorting (isort)
+        run: uv run isort --check-only --profile=black --line-length=120 source tests
+
+      - name: Lint with ruff
+        run: uv run ruff check source tests
+
+      - name: Verify Tailwind CSS builds
+        run: npx tailwindcss -i ./static/css/input.css -o /tmp/output.css --minify
+
+      - name: Run tests with coverage
+        run: |
+          uv run python -m pytest tests \
+            --cov=source \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=80 \
+            -v
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 14
+
+  advisory-mypy:
+    name: "Advisory: Type Checking"
+    runs-on: ubuntu-latest
+    needs: [blocking]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --group main --group dev
+
+      - name: Run mypy
+        run: uv run mypy source --ignore-missing-imports
+        continue-on-error: true
