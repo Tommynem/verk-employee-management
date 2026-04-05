@@ -91,7 +91,6 @@ alembic/versions/__pycache__/
 
 # UV package manager
 .uv/
-uv.lock
 
 # Build artifacts
 *.css.map
