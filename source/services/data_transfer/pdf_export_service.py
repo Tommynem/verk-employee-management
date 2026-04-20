@@ -59,7 +59,7 @@ def get_template_env() -> Environment:
     Returns:
         Configured Jinja2 Environment
     """
-    env = Environment(loader=FileSystemLoader("templates"))
+    env = Environment(loader=FileSystemLoader("templates"), autoescape=True)
     # Add 'now' function for timestamp
     env.globals["now"] = datetime.now
     # Register custom filters for HH:MM time formatting
