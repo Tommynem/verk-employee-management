@@ -3,10 +3,7 @@
 {% block title %}Zeiterfassung{% if month and year %} - {{ month_name }} {{ year }}{% endif %}{% endblock %}
 
 {% block content %}
-<div id="time-entries-content"
-     hx-trigger="timeEntryCreated from:body"
-     hx-get="/time-entries{% if month and year %}?month={{ month }}&year={{ year }}{% endif %}"
-     hx-swap="innerHTML">
+<div id="time-entries-content">
     {% include "partials/_browser_time_entries.html" %}
 </div>
 {% endblock %}
