@@ -180,7 +180,11 @@ def render_template(request: Request, template_name: str, **context) -> str:
     Example:
         html = render_template(request, "partials/_detail_time_entry.html", time_entry=entry)
     """
-    response_body = templates.TemplateResponse(name=template_name, context={"request": request, **context}).body
+    response_body = templates.TemplateResponse(
+        request=request,
+        name=template_name,
+        context={**context},
+    ).body
     # TemplateResponse.body returns bytes, decode to string
     if isinstance(response_body, bytes):
         return response_body.decode()

@@ -58,7 +58,10 @@ async def not_found_handler(request: Request, exc: StarletteHTTPException) -> Re
     # Browser requests get HTML error page
     if is_browser_request(request):
         return templates.TemplateResponse(
-            "pages/404.html", {"request": request, "error_message": error_message}, status_code=404
+            request=request,
+            name="pages/404.html",
+            context={"error_message": error_message},
+            status_code=404,
         )
 
     # API requests get JSON
@@ -92,7 +95,10 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> Respon
             template = "pages/500.html"
 
         return templates.TemplateResponse(
-            template, {"request": request, "error_message": error_message}, status_code=exc.status_code
+            request=request,
+            name=template,
+            context={"error_message": error_message},
+            status_code=exc.status_code,
         )
 
     # API requests get JSON
@@ -125,14 +131,21 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             if "Field required" in msg:
                 msg = "Feld erforderlich"
             elif "Input should be" in msg:
-                msg = msg.replace("Input should be", "Eingabe sollte").replace("a valid", "ein gültiges").replace(", unable to parse string as an integer", " sein")
+                msg = (
+                    msg.replace("Input should be", "Eingabe sollte")
+                    .replace("a valid", "ein gültiges")
+                    .replace(", unable to parse string as an integer", " sein")
+                )
             elif "value is not a valid" in msg:
                 msg = "Wert ist ungültig"
 
             error_message = f"Ungültiger Wert für '{field}': {msg}"
 
         return templates.TemplateResponse(
-            "pages/422.html", {"request": request, "error_message": error_message}, status_code=422
+            request=request,
+            name="pages/422.html",
+            context={"error_message": error_message},
+            status_code=422,
         )
 
     # API requests get JSON (FastAPI default format)
@@ -150,7 +163,7 @@ async def server_error_handler(request: Request, exc: Exception) -> HTMLResponse
     Returns:
         HTML response with 500 error page
     """
-    return templates.TemplateResponse("pages/500.html", {"request": request}, status_code=500)
+    return templates.TemplateResponse(request=request, name="pages/500.html", context={}, status_code=500)
 
 
 # Include routers
