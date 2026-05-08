@@ -6,7 +6,7 @@ This module contains the core data models.
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import Column, Date, DateTime, Enum, Integer, Numeric, String, Time, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Integer, Numeric, String, Time, UniqueConstraint
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.sql import func
 
@@ -83,6 +83,14 @@ class UserSettings(Base):
     annual_vacation_days: Decimal | None = Column(Numeric(5, 2), nullable=True)
     vacation_carryover_days: Decimal | None = Column(Numeric(5, 2), nullable=True)
     vacation_carryover_expires: date | None = Column(Date, nullable=True)
+
+    # Printable employee profile for exports
+    employee_first_name: str | None = Column(String, nullable=True)
+    employee_last_name: str | None = Column(String, nullable=True)
+    employee_job_role: str | None = Column(String, nullable=True)
+    employee_number: str | None = Column(String, nullable=True)
+    show_employee_id: bool = Column(Boolean, default=False, nullable=False)
+    employee_id_source: str | None = Column(String, nullable=True)
 
     # Timestamps
     created_at: datetime = Column(DateTime, default=func.now(), nullable=False)

@@ -18,6 +18,18 @@ from source.database.models import UserSettings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+EMPLOYEE_ID_SOURCES = {"internal", "custom"}
+
+
+def _optional_text(value: object, field_label: str, max_length: int = 100) -> str | None:
+    """Normalize optional settings text fields."""
+    text = str(value).strip() if value is not None else ""
+    if not text:
+        return None
+    if len(text) > max_length:
+        raise HTTPException(status_code=422, detail=f"{field_label} darf höchstens {max_length} Zeichen lang sein")
+    return text
+
 
 @router.get("", response_class=HTMLResponse)
 async def settings_page(
@@ -442,6 +454,60 @@ async def update_vacation_settings(
     db.refresh(settings)
 
     html = render_template(request, "partials/_settings_vacation.html", settings=settings)
+    response = HTMLResponse(content=html, status_code=200)
+    response.headers["HX-Trigger"] = "settingsUpdated"
+    return response
+
+
+@router.patch("/employee", response_class=HTMLResponse)
+async def update_employee_settings(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> HTMLResponse:
+    """Update printable employee profile settings with optimistic locking."""
+    form_data = await request.form()
+
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+
+    if not settings:
+        settings = UserSettings(user_id=user_id, weekly_target_hours=Decimal("40.00"))
+        db.add(settings)
+    else:
+        updated_at_str = form_data.get("updated_at")
+        if updated_at_str is None:
+            raise HTTPException(
+                status_code=422, detail="Zeitstempel (updated_at) ist erforderlich für die Aktualisierung"
+            )
+
+        from datetime import datetime
+
+        try:
+            sent_updated_at = datetime.fromisoformat(str(updated_at_str))
+        except (ValueError, TypeError) as e:
+            raise HTTPException(status_code=422, detail="Ungültiger Zeitstempel") from e
+
+        if settings.updated_at != sent_updated_at:
+            raise HTTPException(
+                status_code=409,
+                detail="Einstellungen wurden zwischenzeitlich geändert. Bitte laden Sie die Seite neu.",
+            )
+
+    employee_id_source = str(form_data.get("employee_id_source") or "custom")
+    if employee_id_source not in EMPLOYEE_ID_SOURCES:
+        raise HTTPException(status_code=422, detail="Ungültige ID-Quelle")
+
+    settings.employee_first_name = _optional_text(form_data.get("employee_first_name"), "Vorname")
+    settings.employee_last_name = _optional_text(form_data.get("employee_last_name"), "Nachname")
+    settings.employee_job_role = _optional_text(form_data.get("employee_job_role"), "Position")
+    settings.employee_number = _optional_text(form_data.get("employee_number"), "Personalnummer")
+    settings.show_employee_id = form_data.get("show_employee_id") == "true"
+    settings.employee_id_source = employee_id_source
+
+    db.commit()
+    db.refresh(settings)
+
+    html = render_template(request, "partials/_settings_employee.html", settings=settings)
     response = HTMLResponse(content=html, status_code=200)
     response.headers["HX-Trigger"] = "settingsUpdated"
     return response

@@ -98,6 +98,12 @@ class UserSettingsFactory(factory.Factory):
     annual_vacation_days = None
     vacation_carryover_days = None
     vacation_carryover_expires = None
+    employee_first_name = None
+    employee_last_name = None
+    employee_job_role = None
+    employee_number = None
+    show_employee_id = False
+    employee_id_source = None
     created_at = factory.LazyFunction(datetime.now)
     updated_at = factory.LazyFunction(datetime.now)
 

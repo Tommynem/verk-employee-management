@@ -1,0 +1,125 @@
+<div class="card bg-base-100 shadow-md border border-base-300 rounded-lg mb-6">
+    <div class="card-body">
+        <h2 class="card-title mb-4">Mitarbeiterdaten</h2>
+
+        <form id="employee-settings-form"
+              hx-patch="/settings/employee"
+              hx-target="#employee-settings-content"
+              hx-swap="innerHTML">
+
+            {% if settings %}
+            <input type="hidden" name="updated_at" value="{{ settings.updated_at.isoformat() }}" />
+            {% endif %}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                    <label class="label" for="employee_first_name">
+                        <span class="label-text">Vorname</span>
+                    </label>
+                    <input type="text"
+                           id="employee_first_name"
+                           name="employee_first_name"
+                           value="{{ settings.employee_first_name if settings and settings.employee_first_name else '' }}"
+                           maxlength="100"
+                           class="input input-bordered w-full"
+                           autocomplete="given-name" />
+                </div>
+
+                <div class="form-control">
+                    <label class="label" for="employee_last_name">
+                        <span class="label-text">Nachname</span>
+                    </label>
+                    <input type="text"
+                           id="employee_last_name"
+                           name="employee_last_name"
+                           value="{{ settings.employee_last_name if settings and settings.employee_last_name else '' }}"
+                           maxlength="100"
+                           class="input input-bordered w-full"
+                           autocomplete="family-name" />
+                </div>
+            </div>
+
+            <div class="form-control mt-4">
+                <label class="label" for="employee_job_role">
+                    <span class="label-text">Position</span>
+                </label>
+                <input type="text"
+                       id="employee_job_role"
+                       name="employee_job_role"
+                       value="{{ settings.employee_job_role if settings and settings.employee_job_role else '' }}"
+                       maxlength="100"
+                       class="input input-bordered w-full max-w-md"
+                       autocomplete="organization-title" />
+            </div>
+
+            <div class="form-control mt-4">
+                <label class="label cursor-pointer justify-start gap-3" for="show_employee_id">
+                    <input type="checkbox"
+                           id="show_employee_id"
+                           name="show_employee_id"
+                           value="true"
+                           class="checkbox checkbox-primary"
+                           {% if settings and settings.show_employee_id %}checked{% endif %}
+                           onchange="toggleEmployeeIdSettings(this.checked)" />
+                    <span class="label-text">ID im PDF anzeigen</span>
+                </label>
+            </div>
+
+            {% set id_source = settings.employee_id_source if settings and settings.employee_id_source else 'custom' %}
+            <div id="employee-id-settings"
+                 class="mt-3 {% if not settings or not settings.show_employee_id %}hidden{% endif %}">
+                <div class="form-control">
+                    <label class="label" for="employee_id_source">
+                        <span class="label-text">ID-Quelle</span>
+                    </label>
+                    <select id="employee_id_source"
+                            name="employee_id_source"
+                            class="select select-bordered w-full max-w-md"
+                            onchange="toggleEmployeeNumberInput(this.value)">
+                        <option value="internal" {% if id_source == 'internal' %}selected{% endif %}>App-ID</option>
+                        <option value="custom" {% if id_source == 'custom' %}selected{% endif %}>Personalnummer</option>
+                    </select>
+                </div>
+
+                <div id="employee-number-field"
+                     class="form-control mt-4 {% if id_source != 'custom' %}hidden{% endif %}">
+                    <label class="label" for="employee_number">
+                        <span class="label-text">Personalnummer</span>
+                    </label>
+                    <input type="text"
+                           id="employee_number"
+                           name="employee_number"
+                           value="{{ settings.employee_number if settings and settings.employee_number else '' }}"
+                           maxlength="100"
+                           class="input input-bordered w-full max-w-md" />
+                </div>
+            </div>
+
+            <div class="flex justify-end mt-6">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function() {
+    window.toggleEmployeeIdSettings = function(checked) {
+        const idSettings = document.getElementById('employee-id-settings');
+        const source = document.getElementById('employee_id_source');
+        if (idSettings) {
+            idSettings.classList.toggle('hidden', !checked);
+        }
+        if (source) {
+            window.toggleEmployeeNumberInput(source.value);
+        }
+    };
+
+    window.toggleEmployeeNumberInput = function(value) {
+        const numberField = document.getElementById('employee-number-field');
+        if (numberField) {
+            numberField.classList.toggle('hidden', value !== 'custom');
+        }
+    };
+})();
+</script>

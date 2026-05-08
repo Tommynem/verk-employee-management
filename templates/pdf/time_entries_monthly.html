@@ -46,6 +46,25 @@
             margin: 0;
         }
 
+        .header-title {
+            text-align: right;
+        }
+
+        .employee-info {
+            margin-top: 8px;
+            font-size: 9px;
+            color: #4b5563;
+        }
+
+        .employee-info-row {
+            margin-top: 2px;
+        }
+
+        .employee-info-label {
+            font-weight: bold;
+            color: #1e2939;
+        }
+
         /* Table styles */
         .time-entries-table {
             width: 100%;
@@ -215,7 +234,33 @@
     <!-- Header -->
     <div class="header">
         <img src="{{ logo_data_uri }}" alt="Verk Logo">
-        <h1>Zeiterfassung {{ month_name }} {{ year }}</h1>
+        <div class="header-title">
+            <h1>Zeiterfassung {{ month_name }} {{ year }}</h1>
+            {% if employee_info %}
+            <div class="employee-info">
+                {% if employee_info.name %}
+                <div class="employee-info-row">
+                    <span class="employee-info-label">Mitarbeiter:</span> {{ employee_info.name }}
+                </div>
+                {% endif %}
+                {% if employee_info.employee_id %}
+                <div class="employee-info-row">
+                    <span class="employee-info-label">ID:</span> {{ employee_info.employee_id }}
+                </div>
+                {% endif %}
+                {% if employee_info.job_role %}
+                <div class="employee-info-row">
+                    <span class="employee-info-label">Position:</span> {{ employee_info.job_role }}
+                </div>
+                {% endif %}
+                {% if employee_info.weekly_hours %}
+                <div class="employee-info-row">
+                    <span class="employee-info-label">Wochenstunden:</span> {{ employee_info.weekly_hours }}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Time Entries Table -->

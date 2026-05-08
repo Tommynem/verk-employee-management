@@ -7,6 +7,7 @@ to PDF format with monthly summary data.
 import base64
 from datetime import datetime
 from pathlib import Path
+from typing import SupportsFloat
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -66,6 +67,40 @@ def get_template_env() -> Environment:
     env.filters["format_hours"] = format_hours
     env.filters["format_balance"] = format_balance
     return env
+
+
+def _format_weekly_hours(value: SupportsFloat) -> str:
+    """Format weekly hours for the German PDF header."""
+    return f"{float(value):.2f}".replace(".", ",") + " h"
+
+
+def build_employee_info(settings: UserSettings, user_id: int) -> dict[str, str]:
+    """Build optional employee information for PDF rendering."""
+    first_name = (settings.employee_first_name or "").strip()
+    last_name = (settings.employee_last_name or "").strip()
+    display_name = " ".join(part for part in (first_name, last_name) if part)
+
+    employee_info = {}
+    if display_name:
+        employee_info["name"] = display_name
+    job_role = (settings.employee_job_role or "").strip()
+    if job_role:
+        employee_info["job_role"] = job_role
+
+    employee_id = ""
+    if settings.show_employee_id:
+        if settings.employee_id_source == "internal":
+            employee_id = str(user_id)
+        elif settings.employee_id_source == "custom" and settings.employee_number:
+            employee_id = settings.employee_number.strip()
+
+    if employee_id:
+        employee_info["employee_id"] = employee_id
+
+    if employee_info:
+        employee_info["weekly_hours"] = _format_weekly_hours(settings.weekly_target_hours)
+
+    return employee_info
 
 
 class PDFExportService:
@@ -151,6 +186,7 @@ class PDFExportService:
             entries=prepared_entries,
             summary=summary,
             logo_data_uri=logo_data_uri,
+            employee_info=build_employee_info(settings, user_id),
         )
 
         # Generate PDF
@@ -173,4 +209,5 @@ class PDFExportService:
 
 __all__ = [
     "PDFExportService",
+    "build_employee_info",
 ]

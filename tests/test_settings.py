@@ -10,6 +10,7 @@ Routes tested:
 
 from decimal import Decimal
 
+from source.database.models import UserSettings
 from tests.factories import UserSettingsFactory
 
 
@@ -972,3 +973,118 @@ class TestVacationSettingsUpdate:
         assert "15,5" in response.text
         assert "30,0" in response.text
         assert "5,0" in response.text
+
+
+class TestEmployeeSettings:
+    """Test PATCH /settings/employee endpoint."""
+
+    def test_get_settings_includes_employee_fields(self, client, db_session):
+        """GET /settings renders employee profile fields."""
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        assert "Mitarbeiterdaten" in response.text
+        assert 'name="employee_first_name"' in response.text
+        assert 'name="employee_last_name"' in response.text
+        assert 'name="employee_job_role"' in response.text
+        assert 'name="employee_number"' in response.text
+
+    def test_patch_employee_settings_updates_profile_fields(self, client, db_session):
+        """PATCH saves optional employee profile fields."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/employee",
+            data={
+                "employee_first_name": "Erika",
+                "employee_last_name": "Mustermann",
+                "employee_job_role": "Buchhaltung",
+                "employee_number": "L-123",
+                "show_employee_id": "true",
+                "employee_id_source": "custom",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        db_session.refresh(settings)
+        assert settings.employee_first_name == "Erika"
+        assert settings.employee_last_name == "Mustermann"
+        assert settings.employee_job_role == "Buchhaltung"
+        assert settings.employee_number == "L-123"
+        assert settings.show_employee_id is True
+        assert settings.employee_id_source == "custom"
+
+    def test_patch_employee_settings_clears_optional_fields(self, client, db_session):
+        """PATCH clears optional employee profile fields with empty strings."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            employee_first_name="Erika",
+            employee_last_name="Mustermann",
+            employee_job_role="Buchhaltung",
+            employee_number="L-123",
+            show_employee_id=True,
+            employee_id_source="custom",
+        )
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/employee",
+            data={
+                "employee_first_name": "",
+                "employee_last_name": "",
+                "employee_job_role": "",
+                "employee_number": "",
+                "employee_id_source": "custom",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+
+        db_session.refresh(settings)
+        assert settings.employee_first_name is None
+        assert settings.employee_last_name is None
+        assert settings.employee_job_role is None
+        assert settings.employee_number is None
+        assert settings.show_employee_id is False
+
+    def test_patch_employee_settings_rejects_invalid_id_source(self, client, db_session):
+        """PATCH rejects unknown employee ID source values."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/employee",
+            data={
+                "employee_id_source": "legacy",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_patch_employee_settings_creates_settings_if_not_exist(self, client, db_session):
+        """PATCH creates settings record if none exists for user."""
+        response = client.patch(
+            "/settings/employee",
+            data={
+                "employee_first_name": "Erika",
+                "employee_id_source": "custom",
+            },
+        )
+
+        assert response.status_code == 200
+        settings = db_session.query(UserSettings).filter(UserSettings.user_id == 1).one()
+        assert settings.employee_first_name == "Erika"
+        assert settings.weekly_target_hours == Decimal("40.00")

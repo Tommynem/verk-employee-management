@@ -6,11 +6,12 @@ to PDF format with monthly summary data.
 
 from datetime import date, time
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
 from source.services.data_transfer.dataclasses import ExportResult
-from source.services.data_transfer.pdf_export_service import PDFExportService
+from source.services.data_transfer.pdf_export_service import PDFExportService, build_employee_info, get_template_env
 from tests.factories import TimeEntryFactory, UserSettingsFactory, VacationEntryFactory
 
 
@@ -513,4 +514,122 @@ class TestPDFExportServiceEdgeCases:
 __all__ = [
     "TestPDFExportServiceExportPDF",
     "TestPDFExportServiceEdgeCases",
+    "TestPDFEmployeeInfo",
 ]
+
+
+class TestPDFEmployeeInfo:
+    """Tests for employee info rendered into PDF context."""
+
+    def test_build_employee_info_empty_when_no_profile_fields(self):
+        """No employee profile fields preserves the current PDF header."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("32.00"))
+
+        employee_info = build_employee_info(settings, user_id=1)
+
+        assert employee_info == {}
+
+    def test_build_employee_info_includes_name_role_and_weekly_hours(self):
+        """Configured employee profile fields are included in PDF context."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+            employee_first_name="Erika",
+            employee_last_name="Mustermann",
+            employee_job_role="Buchhaltung",
+        )
+
+        employee_info = build_employee_info(settings, user_id=1)
+
+        assert employee_info["name"] == "Erika Mustermann"
+        assert employee_info["job_role"] == "Buchhaltung"
+        assert employee_info["weekly_hours"] == "32,00 h"
+
+    def test_build_employee_info_omits_id_by_default(self):
+        """Employee ID is not shown unless explicitly enabled."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+            employee_first_name="Erika",
+            employee_number="L-123",
+            show_employee_id=False,
+            employee_id_source="custom",
+        )
+
+        employee_info = build_employee_info(settings, user_id=1)
+
+        assert "employee_id" not in employee_info
+
+    def test_build_employee_info_uses_internal_id_when_selected(self):
+        """Internal ID mode renders the app-assigned user ID."""
+        settings = UserSettingsFactory.build(
+            user_id=42,
+            weekly_target_hours=Decimal("32.00"),
+            show_employee_id=True,
+            employee_id_source="internal",
+        )
+
+        employee_info = build_employee_info(settings, user_id=42)
+
+        assert employee_info["employee_id"] == "42"
+        assert employee_info["weekly_hours"] == "32,00 h"
+
+    def test_build_employee_info_uses_custom_employee_number_when_selected(self):
+        """Custom ID mode renders the configured employee number."""
+        settings = UserSettingsFactory.build(
+            user_id=42,
+            weekly_target_hours=Decimal("32.00"),
+            employee_number="L-123",
+            show_employee_id=True,
+            employee_id_source="custom",
+        )
+
+        employee_info = build_employee_info(settings, user_id=42)
+
+        assert employee_info["employee_id"] == "L-123"
+
+    def test_build_employee_info_omits_empty_custom_employee_number(self):
+        """Custom ID mode with no employee number renders no employee info."""
+        settings = UserSettingsFactory.build(
+            user_id=42,
+            weekly_target_hours=Decimal("32.00"),
+            employee_number=None,
+            show_employee_id=True,
+            employee_id_source="custom",
+        )
+
+        employee_info = build_employee_info(settings, user_id=42)
+
+        assert employee_info == {}
+
+    def test_pdf_template_renders_employee_info_in_header(self):
+        """PDF template renders configured employee info in the document header."""
+        template = get_template_env().get_template("pdf/time_entries_monthly.html")
+
+        html = template.render(
+            year=2026,
+            month=1,
+            month_name="Januar",
+            entries=[],
+            summary=SimpleNamespace(
+                total_actual=Decimal("0.00"),
+                total_target=Decimal("0.00"),
+                carryover_out=Decimal("0.00"),
+            ),
+            logo_data_uri="",
+            employee_info={
+                "name": "Erika Mustermann",
+                "employee_id": "L-123",
+                "job_role": "Buchhaltung",
+                "weekly_hours": "32,00 h",
+            },
+        )
+
+        assert "Mitarbeiter:" in html
+        assert "Erika Mustermann" in html
+        assert "ID:" in html
+        assert "L-123" in html
+        assert "Position:" in html
+        assert "Buchhaltung" in html
+        assert "Wochenstunden:" in html
+        assert "32,00 h" in html
