@@ -28,52 +28,57 @@
             return '';
         }
 
-        // If already in colon format, validate and normalize
+        let hour, minute;
+
+        // Handle colon format
         if (value.includes(':')) {
             const parts = value.split(':');
             if (parts.length === 2) {
-                const hour = parseInt(parts[0], 10);
-                const minute = parseInt(parts[1], 10);
-                if (!isNaN(hour) && !isNaN(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                    return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
-                }
+                hour = parseInt(parts[0], 10);
+                minute = parseInt(parts[1], 10);
+            } else {
+                return ''; // Invalid format (e.g. "12:30:45")
             }
-            return ''; // Invalid format, clear field
-        }
-
-        // Must be numeric from here
-        if (!/^\d+$/.test(value)) {
-            return ''; // Invalid, clear field
-        }
-
-        const length = value.length;
-
-        // Parse based on length
-        if (length === 1 || length === 2) {
-            // One or two digits: treat as hour (e.g., "6" -> "06:00", "14" -> "14:00")
-            const hour = parseInt(value, 10);
-            if (hour === 24) return '00:00'; // Special case
-            if (hour >= 0 && hour <= 23) {
-                return String(hour).padStart(2, '0') + ':00';
+        } else {
+            // Must be numeric if no colon
+            if (!/^\d+$/.test(value)) {
+                return '';
             }
-        } else if (length === 3) {
-            // Three digits: HMM format (e.g., "830" -> "08:30")
-            const hour = parseInt(value[0], 10);
-            const minute = parseInt(value.slice(1), 10);
-            if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
-            }
-        } else if (length === 4) {
-            // Four digits: HHMM format (e.g., "1630" -> "16:30")
-            const hour = parseInt(value.slice(0, 2), 10);
-            const minute = parseInt(value.slice(2), 10);
-            if (hour === 24 && minute === 0) return '00:00'; // Special case
-            if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+
+            const length = value.length;
+            if (length === 1 || length === 2) {
+                // One or two digits: treat as hour (e.g., "6" -> 6:00, "14" -> 14:00)
+                hour = parseInt(value, 10);
+                minute = 0;
+            } else if (length === 3) {
+                // Three digits: HMM format (e.g., "830" -> 08:30)
+                hour = parseInt(value[0], 10);
+                minute = parseInt(value.slice(1), 10);
+            } else if (length === 4) {
+                // Four digits: HHMM format (e.g., "1630" -> 16:30)
+                hour = parseInt(value.slice(0, 2), 10);
+                minute = parseInt(value.slice(2), 10);
+            } else {
+                return ''; // Too many digits
             }
         }
 
-        // Invalid format, clear field
+        // Validation
+        if (isNaN(hour) || isNaN(minute)) {
+            return '';
+        }
+
+        // Special case: 24:00 -> 00:00
+        if (hour === 24 && minute === 0) {
+            return '00:00';
+        }
+
+        // Final bounds check
+        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+            return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+        }
+
+        // Invalid hour or minute (e.g. "25", "12:60")
         return '';
     }
 
