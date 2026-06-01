@@ -17,17 +17,25 @@
     </td>
 
     {# 2. Ankunft (Start Time) #}
-    <td class="py-3 px-4 text-sm">{{ entry.start_time.strftime('%H:%M') if entry.start_time else '' }}</td>
+    <td class="py-3 px-4 text-sm">
+        {{ entry.start_time.strftime('%H:%M') if entry.start_time and entry.absence_type.value != 'vacation' else '' }}
+    </td>
 
     {# 3. Ende (End Time) #}
-    <td class="py-3 px-4 text-sm">{{ entry.end_time.strftime('%H:%M') if entry.end_time else '' }}</td>
+    <td class="py-3 px-4 text-sm">
+        {{ entry.end_time.strftime('%H:%M') if entry.end_time and entry.absence_type.value != 'vacation' else '' }}
+    </td>
 
     {# 4. Pausen (Break) #}
-    <td class="py-3 px-4 text-sm">{{ entry.break_minutes|format_duration if entry.break_minutes else '' }}</td>
+    <td class="py-3 px-4 text-sm">
+        {{ entry.break_minutes|format_duration if entry.break_minutes and entry.absence_type.value != 'vacation' else '' }}
+    </td>
 
     {# 5. Arbeitsstunden Real (Actual Hours) #}
     <td class="py-3 px-4 text-sm bg-info/10">
-        {% if entry.absence_type.value in ['vacation', 'sick', 'holiday', 'flex_time'] %}
+        {% if entry.absence_type.value == 'vacation' %}
+            {{ actual_hours|format_hours }}
+        {% elif entry.absence_type.value in ['sick', 'holiday', 'flex_time'] %}
             {{ target_hours|format_hours }}
         {% else %}
             {{ actual_hours|format_hours if actual_hours else '' }}

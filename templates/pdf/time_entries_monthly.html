@@ -179,7 +179,7 @@
 
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 15px;
         }
 
@@ -376,6 +376,10 @@
             <div class="summary-item">
                 <div class="summary-label">Sollstunden</div>
                 <div class="summary-value">{{ summary.total_target|format_hours }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">Urlaubstage im Monat</div>
+                <div class="summary-value">{{ monthly_vacation_days|default(0) }}</div>
             </div>
             <div class="summary-item">
                 <div class="summary-label">Endsaldo</div>

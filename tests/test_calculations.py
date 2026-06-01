@@ -59,6 +59,19 @@ class TestActualHours:
         )
         assert actual_hours(entry) == Decimal("0.00")
 
+    @pytest.mark.unit
+    def test_actual_hours_vacation_ignores_stale_times(self):
+        """Vacation is not worked time, even if stale time fields are present."""
+        entry = TimeEntry(
+            work_date=date(2026, 1, 14),
+            start_time=time(7, 0),
+            end_time=time(15, 0),
+            break_minutes=30,
+            absence_type=AbsenceType.VACATION,
+            status=RecordStatus.DRAFT,
+        )
+        assert actual_hours(entry) == Decimal("0.00")
+
 
 class TestTargetHours:
     @pytest.mark.unit
@@ -129,8 +142,8 @@ class TestTargetHours:
         assert target_hours(entry, settings) == Decimal("6.40")
 
     @pytest.mark.unit
-    def test_target_hours_vacation_returns_normal(self):
-        """VACATION has normal target."""
+    def test_target_hours_vacation_returns_zero(self):
+        """VACATION has no target hours because it is not a work day."""
         entry = TimeEntry(
             work_date=date(2026, 1, 14),  # Wednesday
             absence_type=AbsenceType.VACATION,
@@ -140,7 +153,7 @@ class TestTargetHours:
             user_id=1,
             weekly_target_hours=Decimal("32.00"),
         )
-        assert target_hours(entry, settings) == Decimal("6.40")
+        assert target_hours(entry, settings) == Decimal("0.00")
 
     @pytest.mark.unit
     def test_target_hours_flex_time_returns_normal(self):
@@ -192,7 +205,7 @@ class TestBalance:
 
     @pytest.mark.unit
     def test_balance_vacation_counts_as_worked(self):
-        """Vacation = 0 balance (neutral)."""
+        """Vacation = 0 balance (neutral non-working day)."""
         entry = TimeEntry(
             work_date=date(2026, 1, 14),  # Wednesday
             absence_type=AbsenceType.VACATION,

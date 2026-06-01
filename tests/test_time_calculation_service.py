@@ -295,7 +295,7 @@ class TestWeeklySummary:
 
     @pytest.mark.unit
     def test_weekly_summary_with_vacation(self):
-        """Vacation days should have balance of 0."""
+        """Vacation days should have 0 actual, 0 target, and 0 balance."""
         week_start = date(2026, 1, 12)
         entries = [
             VacationEntryFactory.build(work_date=date(2026, 1, 12)),  # Monday vacation
@@ -313,9 +313,32 @@ class TestWeeklySummary:
 
         # Monday vacation - balance 0
         assert summary.days[0].absence_type == AbsenceType.VACATION
+        assert summary.days[0].actual_hours == Decimal("0.00")
+        assert summary.days[0].target_hours == Decimal("0.00")
         assert summary.days[0].balance == Decimal("0.00")
         # Tuesday work - balance = 7.5 - 6.4 = 1.1
         assert summary.days[1].balance == Decimal("1.10")
+
+    @pytest.mark.unit
+    def test_weekly_summary_vacation_reduces_total_target(self):
+        """Vacation days are excluded from weekly target totals."""
+        week_start = date(2026, 1, 12)
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 1, 12)),
+            TimeEntryFactory.build(
+                work_date=date(2026, 1, 13),
+                start_time=time(7, 0),
+                end_time=time(15, 0),
+                break_minutes=30,
+            ),
+        ]
+        settings = UserSettingsFactory.build(weekly_target_hours=Decimal("32.00"))
+        service = TimeCalculationService()
+
+        summary = service.weekly_summary(entries, settings, week_start)
+
+        assert summary.total_actual == Decimal("7.50")
+        assert summary.total_target == Decimal("25.60")
 
     @pytest.mark.unit
     def test_weekly_summary_totals_calculation(self):
@@ -362,6 +385,26 @@ class TestMonthlySummary:
         assert summary.year == 2026
         assert summary.month == 1
         assert len(summary.weeks) >= 4  # January 2026 has 5 weeks partially
+
+    @pytest.mark.unit
+    def test_monthly_summary_vacation_reduces_total_target(self):
+        """Vacation days are excluded from monthly target totals."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 1, 5)),
+            TimeEntryFactory.build(
+                work_date=date(2026, 1, 6),
+                start_time=time(7, 0),
+                end_time=time(15, 0),
+                break_minutes=30,
+            ),
+        ]
+        settings = UserSettingsFactory.build(weekly_target_hours=Decimal("32.00"))
+        service = TimeCalculationService()
+
+        summary = service.monthly_summary(entries, settings, 2026, 1)
+
+        assert summary.total_actual == Decimal("7.50")
+        assert summary.total_target == Decimal("134.40")
 
     @pytest.mark.unit
     def test_monthly_summary_totals(self):

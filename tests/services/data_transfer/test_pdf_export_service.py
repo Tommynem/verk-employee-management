@@ -285,6 +285,69 @@ class TestPDFExportServiceExportPDF:
         assert len(result.content) > 200
 
     @pytest.mark.asyncio
+    async def test_export_pdf_passes_monthly_vacation_days_to_template(self, monkeypatch):
+        """PDF export includes vacation days taken in the requested month."""
+
+        class FakePDFGenerator:
+            html = ""
+
+            async def generate_pdf_bytes(self, html, landscape=True):
+                FakePDFGenerator.html = html
+                return b"%PDF-test"
+
+            async def close(self):
+                return None
+
+        monkeypatch.setattr(
+            "source.services.data_transfer.pdf_export_service.PDFGenerator",
+            FakePDFGenerator,
+        )
+        service = PDFExportService()
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("32.00"))
+        entries = [
+            VacationEntryFactory.build(user_id=1, work_date=date(2026, 1, 13)),
+            VacationEntryFactory.build(user_id=1, work_date=date(2026, 1, 14)),
+            VacationEntryFactory.build(user_id=1, work_date=date(2026, 2, 2)),
+        ]
+
+        result = await service.export_pdf(entries, settings, user_id=1, year=2026, month=1)
+
+        assert result.content == b"%PDF-test"
+        assert "Urlaubstage im Monat" in FakePDFGenerator.html
+        assert '<div class="summary-value">2</div>' in FakePDFGenerator.html
+
+    @pytest.mark.asyncio
+    async def test_export_pdf_vacation_days_excludes_weekends(self, monkeypatch):
+        """PDF vacation-day count follows the weekday workday model."""
+
+        class FakePDFGenerator:
+            html = ""
+
+            async def generate_pdf_bytes(self, html, landscape=True):
+                FakePDFGenerator.html = html
+                return b"%PDF-test"
+
+            async def close(self):
+                return None
+
+        monkeypatch.setattr(
+            "source.services.data_transfer.pdf_export_service.PDFGenerator",
+            FakePDFGenerator,
+        )
+        service = PDFExportService()
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("32.00"))
+        entries = [
+            VacationEntryFactory.build(user_id=1, work_date=date(2026, 1, 16)),  # Friday
+            VacationEntryFactory.build(user_id=1, work_date=date(2026, 1, 17)),  # Saturday
+            VacationEntryFactory.build(user_id=1, work_date=date(2026, 1, 18)),  # Sunday
+        ]
+
+        await service.export_pdf(entries, settings, user_id=1, year=2026, month=1)
+
+        assert "Urlaubstage im Monat" in FakePDFGenerator.html
+        assert '<div class="summary-value">1</div>' in FakePDFGenerator.html
+
+    @pytest.mark.asyncio
     async def test_export_pdf_december_month_formatting(self):
         """Test export_pdf handles December (month 12) correctly."""
         service = PDFExportService()
@@ -616,6 +679,7 @@ class TestPDFEmployeeInfo:
                 total_target=Decimal("0.00"),
                 carryover_out=Decimal("0.00"),
             ),
+            monthly_vacation_days=0,
             logo_data_uri="",
             employee_info={
                 "name": "Erika Mustermann",
@@ -633,3 +697,25 @@ class TestPDFEmployeeInfo:
         assert "Buchhaltung" in html
         assert "Wochenstunden:" in html
         assert "32,00 h" in html
+
+    def test_pdf_template_renders_monthly_vacation_days(self):
+        """PDF summary shows vacation days taken in the exported month."""
+        template = get_template_env().get_template("pdf/time_entries_monthly.html")
+
+        html = template.render(
+            year=2026,
+            month=1,
+            month_name="Januar",
+            entries=[],
+            summary=SimpleNamespace(
+                total_actual=Decimal("0.00"),
+                total_target=Decimal("0.00"),
+                carryover_out=Decimal("0.00"),
+            ),
+            monthly_vacation_days=3,
+            logo_data_uri="",
+            employee_info={},
+        )
+
+        assert "Urlaubstage im Monat" in html
+        assert '<div class="summary-value">3</div>' in html

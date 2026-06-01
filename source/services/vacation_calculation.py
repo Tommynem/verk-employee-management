@@ -43,7 +43,7 @@ class VacationCalculationService:
     """
 
     def count_vacation_days(self, entries: list[TimeEntry], start: date, end: date) -> Decimal:
-        """Count vacation days in date range.
+        """Count weekday vacation days in date range.
 
         Args:
             entries: List of TimeEntry instances
@@ -55,7 +55,11 @@ class VacationCalculationService:
         """
         count = Decimal("0")
         for entry in entries:
-            if entry.absence_type == AbsenceType.VACATION and start <= entry.work_date <= end:
+            if (
+                entry.absence_type == AbsenceType.VACATION
+                and start <= entry.work_date <= end
+                and entry.work_date.weekday() < 5
+            ):
                 count += Decimal("1")
         return count
 

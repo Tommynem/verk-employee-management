@@ -1,4 +1,4 @@
-"""Tests for ISSUE M15: Actual Hours Display for Absence Days."""
+"""Tests for actual hours display for absence days."""
 
 from datetime import date, time
 from decimal import Decimal
@@ -11,10 +11,10 @@ from tests.factories import TimeEntryFactory
 
 
 class TestAbsenceDayActualHoursDisplay:
-    """Test that absence days show credited hours instead of actual work hours."""
+    """Test absence-day display behavior."""
 
-    def test_vacation_day_shows_target_hours_not_actual(self, client: TestClient, db_session):
-        """ISSUE M15: Vacation day should show credited hours (8h), not work time (7.5h)."""
+    def test_vacation_day_shows_zero_hours_not_actual(self, client: TestClient, db_session):
+        """Vacation day should show 0h, not stale work time or credited hours."""
         # Create settings
         settings = UserSettings(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
@@ -39,8 +39,9 @@ class TestAbsenceDayActualHoursDisplay:
 
         html = response.text
 
-        # Should show target hours (8:00h), not actual hours (7:30h)
-        assert "8:00h" in html  # Target hours in Actual Hours column
+        # Should show 0:00h for actual and target, not stale work or credited hours.
+        assert html.count("0:00h") >= 2
+        assert "8:00h" not in html
         assert "7:30h" not in html  # Should NOT show calculated actual hours
 
     def test_sick_day_shows_target_hours(self, client: TestClient, db_session):
@@ -142,8 +143,8 @@ class TestAbsenceDayActualHoursDisplay:
         # Normal day should show actual hours (7.5h)
         assert "7:30h" in html
 
-    def test_vacation_day_with_no_times_shows_target(self, client: TestClient, db_session):
-        """Vacation day without times should show target hours."""
+    def test_vacation_day_with_no_times_shows_zero(self, client: TestClient, db_session):
+        """Vacation day without times should show zero actual and target hours."""
         settings = UserSettings(user_id=1, weekly_target_hours=Decimal("40.00"))
         db_session.add(settings)
         db_session.commit()
@@ -164,4 +165,5 @@ class TestAbsenceDayActualHoursDisplay:
         assert response.status_code == 200
 
         html = response.text
-        assert "8:00h" in html
+        assert html.count("0:00h") >= 2
+        assert "8:00h" not in html

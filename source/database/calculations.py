@@ -19,11 +19,14 @@ def actual_hours(entry: TimeEntry) -> Decimal:
 
     Returns:
         Decimal hours worked (rounded to 2 decimal places)
-        Returns 0.00 if start_time or end_time is None
+        Returns 0.00 for vacation entries or if start_time or end_time is None
 
     Example:
         7:00-15:00 with 30min break = 7.50 hours
     """
+    if entry.absence_type == AbsenceType.VACATION:
+        return Decimal("0.00")
+
     if entry.start_time is None or entry.end_time is None:
         return Decimal("0.00")
 
@@ -55,7 +58,7 @@ def target_hours(entry: TimeEntry, settings: UserSettings) -> Decimal:
         Decimal target hours for the day (rounded to 2 decimal places)
         Weekdays (Mon-Fri): weekly_target_hours / 5
         Weekends (Sat-Sun): 0.00
-        Public holidays (HOLIDAY): 0.00
+        Vacation and public holidays: 0.00
 
     Example:
         32h/week on Wednesday = 6.40 hours/day
@@ -68,12 +71,12 @@ def target_hours(entry: TimeEntry, settings: UserSettings) -> Decimal:
     if weekday >= 5:
         return Decimal("0.00")
 
-    # Public holidays (Feiertag) are not work days - target = 0
-    if entry.absence_type == AbsenceType.HOLIDAY:
+    # Vacation and public holidays are not target work days.
+    if entry.absence_type in (AbsenceType.VACATION, AbsenceType.HOLIDAY):
         return Decimal("0.00")
 
     # Calculate daily target (weekly / 5 workdays)
-    # Note: SICK gets normal target per German EFZG (credited as worked)
+    # Note: SICK keeps normal target under the existing paid-absence model.
     daily_target = settings.weekly_target_hours / Decimal("5")
 
     # Round to 2 decimal places
@@ -89,14 +92,14 @@ def balance(entry: TimeEntry, settings: UserSettings) -> Decimal:
 
     Returns:
         Decimal balance (actual - target) rounded to 2 decimal places
-        VACATION and SICK: neutral (paid leave/illness counts as target met per EFZG)
+        VACATION and SICK: neutral absence days
 
     Example:
         Worked 10h with 6.4h target = +3.60
         Worked 4h with 6.4h target = -2.40
         Vacation day = 0.00 (neutral)
     """
-    # VACATION and SICK: neutral (paid leave/illness counts as target met per EFZG)
+    # VACATION and SICK are neutral for the time-account balance.
     if entry.absence_type in (AbsenceType.VACATION, AbsenceType.SICK):
         return Decimal("0.00")
 

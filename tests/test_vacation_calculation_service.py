@@ -124,6 +124,22 @@ class TestCountVacationDays:
 
         assert result == Decimal("1")
 
+    @pytest.mark.unit
+    def test_count_vacation_days_ignores_weekends(self):
+        """Weekend vacation entries do not consume vacation days."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 1, 16)),  # Friday
+            VacationEntryFactory.build(work_date=date(2026, 1, 17)),  # Saturday
+            VacationEntryFactory.build(work_date=date(2026, 1, 18)),  # Sunday
+        ]
+        service = VacationCalculationService()
+        start = date(2026, 1, 1)
+        end = date(2026, 1, 31)
+
+        result = service.count_vacation_days(entries, start, end)
+
+        assert result == Decimal("1")
+
 
 class TestCalculateBalance:
     """Tests for VacationCalculationService.calculate_balance method."""

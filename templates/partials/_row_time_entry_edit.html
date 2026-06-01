@@ -4,15 +4,21 @@
 {% set is_new = entry is none %}
 {% set row_id = "time-entry-row-new" if is_new else "time-entry-row-" ~ entry.id %}
 
-{# Calculate actual_hours and balance for display-only fields #}
-{% if not is_new and entry.start_time and entry.end_time %}
+{# Calculate display-only fields. Existing rows use backend-calculated values. #}
+{% if not is_new and actual_hours is defined and target_hours is defined and balance is defined %}
+    {% set display_actual_hours = actual_hours %}
+    {% set display_target_hours = target_hours %}
+    {% set display_balance = balance %}
+{% elif not is_new and entry.start_time and entry.end_time %}
     {% set actual_minutes = (entry.end_time.hour * 60 + entry.end_time.minute) - (entry.start_time.hour * 60 + entry.start_time.minute) - (entry.break_minutes or 0) %}
-    {% set actual_hours = (actual_minutes / 60)|round(2) %}
+    {% set display_actual_hours = (actual_minutes / 60)|round(2) %}
+    {% set display_target_hours = 8.0 %}
+    {% set display_balance = display_actual_hours - display_target_hours %}
 {% else %}
-    {% set actual_hours = 0 %}
+    {% set display_actual_hours = 0 %}
+    {% set display_target_hours = 8.0 %}
+    {% set display_balance = display_actual_hours - display_target_hours %}
 {% endif %}
-{% set target_hours = 8.0 %}
-{% set balance = actual_hours - target_hours %}
 
 <tr id="{{ row_id }}"
     data-edit-row
@@ -78,18 +84,18 @@
 
     {# 5. Arbeitsstunden Real (Display-only, calculated) #}
     <td class="py-3 px-4 text-sm bg-info/10">
-        {% if not is_new and actual_hours %}
-        {{ actual_hours|format_hours }}
+        {% if not is_new %}
+        {{ display_actual_hours|format_hours }}
         {% endif %}
     </td>
 
     {# 6. Arbeitsstunden Soll (Display-only) #}
-    <td class="py-3 px-4 text-sm">{{ target_hours|format_hours }}</td>
+    <td class="py-3 px-4 text-sm">{{ display_target_hours|format_hours }}</td>
 
     {# 7. +/- (Display-only, calculated) #}
-    <td class="py-3 px-4 text-sm {% if balance >= 0 %}text-success{% else %}text-error{% endif %}">
+    <td class="py-3 px-4 text-sm {% if display_balance >= 0 %}text-success{% else %}text-error{% endif %}">
         {% if not is_new %}
-        {{ balance|format_balance }}
+        {{ display_balance|format_balance }}
         {% endif %}
     </td>
 

@@ -16,7 +16,7 @@ Routes tested:
 from datetime import date, time, timedelta
 from decimal import Decimal
 
-from source.database.enums import RecordStatus
+from source.database.enums import AbsenceType, RecordStatus
 from tests.factories import TimeEntryFactory, UserSettingsFactory
 
 
@@ -210,6 +210,28 @@ class TestTimeEntryCreate:
         assert "HX-Trigger" in response.headers
         assert response.headers["HX-Trigger"] == "timeEntryCreated"
 
+    def test_create_vacation_entry_clears_time_fields(self, client, db_session):
+        """Creating a vacation entry stores no work times or break."""
+        from source.database.models import TimeEntry
+
+        response = client.post(
+            "/time-entries",
+            data={
+                "work_date": "2026-01-15",
+                "start_time": "08:00",
+                "end_time": "16:00",
+                "break_minutes": "30",
+                "absence_type": "vacation",
+            },
+        )
+
+        assert response.status_code == 201
+        entry = db_session.query(TimeEntry).filter(TimeEntry.work_date == date(2026, 1, 15)).first()
+        assert entry.absence_type == AbsenceType.VACATION
+        assert entry.start_time is None
+        assert entry.end_time is None
+        assert entry.break_minutes == 0
+
 
 class TestTimeEntryDetail:
     """Test GET /time-entries/{id} detail view."""
@@ -340,6 +362,95 @@ class TestTimeEntryUpdate:
         # Times should now be None
         assert updated_entry.start_time is None
         assert updated_entry.end_time is None
+
+    def test_update_entry_to_vacation_clears_time_fields(self, client, db_session):
+        """PATCH setting vacation clears existing work times and break."""
+        from source.database.models import TimeEntry
+
+        entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=30,
+            absence_type=AbsenceType.NONE,
+        )
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        response = client.patch(
+            f"/time-entries/{entry.id}",
+            data={"absence_type": "vacation", "updated_at": entry.updated_at.isoformat()},
+        )
+
+        assert response.status_code == 200
+        db_session.expire_all()
+        updated_entry = db_session.query(TimeEntry).filter(TimeEntry.id == entry.id).first()
+        assert updated_entry.absence_type == AbsenceType.VACATION
+        assert updated_entry.start_time is None
+        assert updated_entry.end_time is None
+        assert updated_entry.break_minutes == 0
+
+    def test_update_entry_from_vacation_to_none_keeps_times_empty(self, client, db_session):
+        """Switching vacation back to work does not restore old times."""
+        entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=None,
+            end_time=None,
+            break_minutes=0,
+            absence_type=AbsenceType.VACATION,
+        )
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        response = client.patch(
+            f"/time-entries/{entry.id}",
+            data={"absence_type": "none", "updated_at": entry.updated_at.isoformat()},
+        )
+
+        assert response.status_code == 200
+        db_session.refresh(entry)
+        assert entry.absence_type == AbsenceType.NONE
+        assert entry.start_time is None
+        assert entry.end_time is None
+        assert entry.break_minutes == 0
+
+    def test_update_existing_vacation_entry_clears_submitted_time_fields(self, client, db_session):
+        """Saving a vacation row cannot reintroduce work times."""
+        from source.database.models import TimeEntry
+
+        entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=None,
+            end_time=None,
+            break_minutes=0,
+            absence_type=AbsenceType.VACATION,
+        )
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        response = client.patch(
+            f"/time-entries/{entry.id}",
+            data={
+                "start_time": "08:00",
+                "end_time": "16:00",
+                "break_minutes": "30",
+                "updated_at": entry.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        db_session.expire_all()
+        updated_entry = db_session.query(TimeEntry).filter(TimeEntry.id == entry.id).first()
+        assert updated_entry.absence_type == AbsenceType.VACATION
+        assert updated_entry.start_time is None
+        assert updated_entry.end_time is None
+        assert updated_entry.break_minutes == 0
 
 
 class TestTimeEntryDelete:
@@ -1290,6 +1401,28 @@ class TestDailyTargetHoursIntegration:
         # Verify it's in the target hours column
         assert '<td class="py-3 px-4 text-sm">7:00h</td>' in response.text
 
+    def test_list_view_vacation_shows_zero_actual_and_target(self, client, db_session):
+        """Vacation rows render as 0 Ist and 0 Soll."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("35.00"))
+        db_session.add(settings)
+        entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=30,
+            absence_type=AbsenceType.VACATION,
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        assert "15.01.26" in response.text
+        assert response.text.count("0:00h") >= 2
+        assert "+0:00" in response.text
+
     def test_create_entry_uses_custom_target(self, client, db_session):
         """Create entry returns row with custom daily target hours."""
         # Create custom settings (35h/week = 7h daily)
@@ -1464,6 +1597,27 @@ class TestCopyLastEntry:
         assert response.status_code == 200
         data = response.json()
         # Should return null values for times
+        assert data["start_time"] is None
+        assert data["end_time"] is None
+        assert data["break_minutes"] == 0
+
+    def test_get_last_entry_vacation_ignores_stale_times(self, client, db_session):
+        """Copy-last returns no times for vacation entries with stale stored times."""
+        entry = TimeEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            start_time=time(9, 0),
+            end_time=time(17, 0),
+            break_minutes=30,
+            absence_type=AbsenceType.VACATION,
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        response = client.get("/time-entries/last")
+
+        assert response.status_code == 200
+        data = response.json()
         assert data["start_time"] is None
         assert data["end_time"] is None
         assert data["break_minutes"] == 0

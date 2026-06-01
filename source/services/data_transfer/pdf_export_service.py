@@ -5,7 +5,7 @@ to PDF format with monthly summary data.
 """
 
 import base64
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import SupportsFloat
 
@@ -16,6 +16,7 @@ from source.database.models import TimeEntry, UserSettings
 from source.documents.pdf_generator import PDFGenerator
 from source.services.data_transfer.dataclasses import ExportResult
 from source.services.time_calculation import TimeCalculationService
+from source.services.vacation_calculation import VacationCalculationService
 
 # German weekday abbreviations (Monday = 0, Sunday = 6)
 GERMAN_WEEKDAYS = {
@@ -131,10 +132,15 @@ class PDFExportService:
             ExportResult with PDF bytes and metadata
         """
         # Filter entries to only show the requested month
-        month_entries = [
-            e for e in entries
-            if e.work_date.year == year and e.work_date.month == month
-        ]
+        month_entries = [e for e in entries if e.work_date.year == year and e.work_date.month == month]
+
+        vacation_service = VacationCalculationService()
+        if month_entries:
+            month_start = date(year, month, 1)
+            month_end = max(entry.work_date for entry in month_entries)
+            monthly_vacation_days = vacation_service.count_vacation_days(month_entries, month_start, month_end)
+        else:
+            monthly_vacation_days = 0
 
         # Prepare entry data for template (only current month)
         prepared_entries = []
@@ -144,14 +150,17 @@ class PDFExportService:
             target_hours = self.calc_service.target_hours(entry, settings)
             balance = self.calc_service.daily_balance(entry, settings)
             absence_label = ABSENCE_LABELS.get(entry.absence_type.value, "")
+            display_start_time = None if entry.absence_type.value == "vacation" else entry.start_time
+            display_end_time = None if entry.absence_type.value == "vacation" else entry.end_time
+            display_break_minutes = 0 if entry.absence_type.value == "vacation" else entry.break_minutes
 
             prepared_entries.append(
                 {
                     "work_date": entry.work_date,
                     "weekday": weekday,
-                    "start_time": entry.start_time,
-                    "end_time": entry.end_time,
-                    "break_minutes": entry.break_minutes,
+                    "start_time": display_start_time,
+                    "end_time": display_end_time,
+                    "break_minutes": display_break_minutes,
                     "actual_hours": actual_hours,
                     "target_hours": target_hours,
                     "balance": balance,
@@ -185,6 +194,7 @@ class PDFExportService:
             month_name=month_name,
             entries=prepared_entries,
             summary=summary,
+            monthly_vacation_days=monthly_vacation_days,
             logo_data_uri=logo_data_uri,
             employee_info=build_employee_info(settings, user_id),
         )

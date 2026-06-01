@@ -67,6 +67,15 @@ def parse_time_string(time_str: str | None, field_name: str) -> time | None:
         raise HTTPException(status_code=422, detail=f"Ungültige {field_name}") from e
 
 
+def normalize_vacation_fields(data: dict, current_absence_type: AbsenceType | None = None) -> None:
+    """Vacation days are non-working days, so stored time fields must be empty."""
+    target_absence_type = data.get("absence_type", current_absence_type)
+    if target_absence_type == AbsenceType.VACATION or current_absence_type == AbsenceType.VACATION:
+        data["start_time"] = None
+        data["end_time"] = None
+        data["break_minutes"] = 0
+
+
 def get_entry_context(entry: TimeEntry, db: Session, user_id: int) -> dict:
     """Prepare template context for a time entry with calculated values.
 
@@ -494,16 +503,18 @@ async def create_time_entry(
             absence_type=AbsenceType(absence_type),
             notes=notes,
         )
+        entry_dict = entry_data.model_dump()
+        normalize_vacation_fields(entry_dict)
 
         # Create database entry
         entry = TimeEntry(
             user_id=user_id,
-            work_date=entry_data.work_date,
-            start_time=entry_data.start_time,
-            end_time=entry_data.end_time,
-            break_minutes=entry_data.break_minutes,
-            absence_type=entry_data.absence_type,
-            notes=entry_data.notes,
+            work_date=entry_dict["work_date"],
+            start_time=entry_dict["start_time"],
+            end_time=entry_dict["end_time"],
+            break_minutes=entry_dict["break_minutes"],
+            absence_type=entry_dict["absence_type"],
+            notes=entry_dict["notes"],
             status=RecordStatus.DRAFT,
         )
 
@@ -564,6 +575,13 @@ async def get_last_entry_times(
 
     if not last_entry:
         raise HTTPException(status_code=404, detail="Keine Einträge gefunden")
+
+    if last_entry.absence_type == AbsenceType.VACATION:
+        return {
+            "start_time": None,
+            "end_time": None,
+            "break_minutes": 0,
+        }
 
     # Return only time fields, formatted for form inputs
     return {
@@ -661,6 +679,8 @@ async def edit_row(
     if not entry:
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
 
+    entry_context = get_entry_context(entry, db, user_id)
+
     # Check if date is a holiday
     is_holiday_date, holiday_name = is_holiday(entry.work_date, return_name=True)
 
@@ -669,6 +689,9 @@ async def edit_row(
         request,
         "partials/_row_time_entry_edit.html",
         entry=entry,
+        actual_hours=entry_context["actual_hours"],
+        target_hours=entry_context["target_hours"],
+        balance=entry_context["balance"],
         is_holiday=is_holiday_date,
         holiday_name=holiday_name,
         loop={"index": 0},
@@ -841,6 +864,7 @@ async def update_time_entry(
         # Validate with Pydantic schema
         if update_dict:
             TimeEntryUpdate(**update_dict)
+            normalize_vacation_fields(update_dict, entry.absence_type)
 
         # Apply updates
         for key, value in update_dict.items():
