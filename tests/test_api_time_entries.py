@@ -73,7 +73,7 @@ class TestTimeEntryList:
         db_session.add(entry)
         db_session.commit()
 
-        response = client.get("/time-entries")
+        response = client.get("/time-entries?month=1&year=2026")
 
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
@@ -1016,14 +1016,18 @@ class TestWeeklySummaryEndpoint:
         db_session.add(settings)
         db_session.commit()
 
-        # Create entries for current week (2026-01-27 is a Tuesday)
-        # Monday 2026-01-26: 8h
+        week_start = date.today() - timedelta(days=date.today().weekday())
+
+        # Create entries for the current week
         entry1 = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 26), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+            user_id=1, work_date=week_start, start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
         )
-        # Tuesday 2026-01-27: 8h
         entry2 = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 27), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+            user_id=1,
+            work_date=week_start + timedelta(days=1),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=0,
         )
         db_session.add_all([entry1, entry2])
         db_session.commit()
@@ -1045,12 +1049,14 @@ class TestWeeklySummaryEndpoint:
         db_session.add(settings)
         db_session.commit()
 
-        # Create entries for current week (2026-01-26 to 2026-01-31)
+        week_start = date.today() - timedelta(days=date.today().weekday())
+
+        # Create entries for current week
         # Monday-Friday: 8h each = 40h actual
         for day_offset in range(5):
             entry = TimeEntryFactory.build(
                 user_id=1,
-                work_date=date(2026, 1, 26) + timedelta(days=day_offset),
+                work_date=week_start + timedelta(days=day_offset),
                 start_time=time(8, 0),
                 end_time=time(16, 0),
                 break_minutes=0,
@@ -1076,12 +1082,18 @@ class TestWeeklySummaryEndpoint:
         db_session.add(settings)
         db_session.commit()
 
+        week_start = date.today() - timedelta(days=date.today().weekday())
+
         # Create only 2 days with 8h each = 16h actual
         entry1 = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 26), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+            user_id=1, work_date=week_start, start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
         )
         entry2 = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 27), start_time=time(8, 0), end_time=time(16, 0), break_minutes=0
+            user_id=1,
+            work_date=week_start + timedelta(days=1),
+            start_time=time(8, 0),
+            end_time=time(16, 0),
+            break_minutes=0,
         )
         db_session.add_all([entry1, entry2])
         db_session.commit()
@@ -1104,11 +1116,13 @@ class TestWeeklySummaryEndpoint:
         db_session.add(settings)
         db_session.commit()
 
+        week_start = date.today() - timedelta(days=date.today().weekday())
+
         # Create 5 days with 10h each = 50h actual
         for day_offset in range(5):
             entry = TimeEntryFactory.build(
                 user_id=1,
-                work_date=date(2026, 1, 26) + timedelta(days=day_offset),
+                work_date=week_start + timedelta(days=day_offset),
                 start_time=time(7, 0),
                 end_time=time(17, 0),
                 break_minutes=0,

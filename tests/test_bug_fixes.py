@@ -17,9 +17,11 @@ pytest.importorskip("playwright")
 
 from playwright.sync_api import Page, expect
 
+requires_local_server = pytest.mark.skip(reason="Requires running server at localhost:8000")
+
 
 @pytest.mark.playwright
-@pytest.mark.skip(reason="Requires running server at localhost:8000")
+@requires_local_server
 class TestBug1And2InvalidTimeInput:
     """Test that invalid time inputs are rejected and cleared.
 
@@ -135,6 +137,7 @@ class TestBug1And2InvalidTimeInput:
 
 
 @pytest.mark.playwright
+@requires_local_server
 class TestBug3DateFieldCorruption:
     """Test that date field displays correctly when adding new entry.
 
@@ -222,6 +225,7 @@ class TestBug3DateFieldCorruption:
 
 
 @pytest.mark.playwright
+@requires_local_server
 class TestBug4MissingVisualFeedbackAbsenceButtons:
     """Test that absence buttons show visual feedback when clicked.
 
@@ -307,6 +311,7 @@ class TestBug4MissingVisualFeedbackAbsenceButtons:
 
 
 @pytest.mark.playwright
+@requires_local_server
 class TestBug5EscapeKeyNotWorkingToCancel:
     """Test that Escape key cancels edit mode.
 

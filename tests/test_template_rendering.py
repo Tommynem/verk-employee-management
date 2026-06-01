@@ -14,6 +14,9 @@ from decimal import Decimal
 from source.database.enums import AbsenceType
 from tests.factories import TimeEntryFactory, UserSettingsFactory
 
+CURRENT_MONTH_DATE = date.today().replace(day=15)
+CURRENT_MONTH_QUERY = f"month={CURRENT_MONTH_DATE.month}&year={CURRENT_MONTH_DATE.year}"
+
 
 class TestTableHeaderStructure:
     """Verify table header matches spec section 5.2-5.3."""
@@ -104,13 +107,13 @@ class TestFooterStructure:
         """Footer has summary rows when data exists per spec 7."""
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("32.00"))
         entry = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 15), start_time=time(7, 0), end_time=time(15, 0), break_minutes=30
+            user_id=1, work_date=CURRENT_MONTH_DATE, start_time=time(7, 0), end_time=time(15, 0), break_minutes=30
         )
         db_session.add(settings)
         db_session.add(entry)
         db_session.commit()
 
-        response = client.get("/time-entries?month=1&year=2026")
+        response = client.get(f"/time-entries?{CURRENT_MONTH_QUERY}")
         html = response.text
 
         # Footer should contain Monatssaldo and Zeitkonto labels
@@ -137,13 +140,13 @@ class TestFooterStructure:
         """Footer contains exactly 2 summary rows per spec 7.2-7.3."""
         settings = UserSettingsFactory.build(user_id=1)
         entry = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 15), start_time=time(7, 0), end_time=time(15, 0)
+            user_id=1, work_date=CURRENT_MONTH_DATE, start_time=time(7, 0), end_time=time(15, 0)
         )
         db_session.add(settings)
         db_session.add(entry)
         db_session.commit()
 
-        response = client.get("/time-entries?month=1&year=2026")
+        response = client.get(f"/time-entries?{CURRENT_MONTH_QUERY}")
         html = response.text
 
         # Both summary row labels should exist
@@ -220,13 +223,13 @@ class TestSummaryCards:
         """Summary cards are displayed when entries exist per spec 4."""
         settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("32.00"))
         entry = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 15), start_time=time(7, 0), end_time=time(15, 0), break_minutes=30
+            user_id=1, work_date=CURRENT_MONTH_DATE, start_time=time(7, 0), end_time=time(15, 0), break_minutes=30
         )
         db_session.add(settings)
         db_session.add(entry)
         db_session.commit()
 
-        response = client.get("/time-entries?month=1&year=2026")
+        response = client.get(f"/time-entries?{CURRENT_MONTH_QUERY}")
         html = response.text
 
         # All three card labels should exist
@@ -238,13 +241,13 @@ class TestSummaryCards:
         """Summary cards have German subtitles per spec 4.3."""
         settings = UserSettingsFactory.build(user_id=1)
         entry = TimeEntryFactory.build(
-            user_id=1, work_date=date(2026, 1, 15), start_time=time(7, 0), end_time=time(15, 0)
+            user_id=1, work_date=CURRENT_MONTH_DATE, start_time=time(7, 0), end_time=time(15, 0)
         )
         db_session.add(settings)
         db_session.add(entry)
         db_session.commit()
 
-        response = client.get("/time-entries?month=1&year=2026")
+        response = client.get(f"/time-entries?{CURRENT_MONTH_QUERY}")
         html = response.text
 
         # Card subtitles should exist
