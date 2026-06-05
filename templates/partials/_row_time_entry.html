@@ -52,6 +52,12 @@
 
     {# 8. Abwesenheit / Bemerkung (Notes) #}
     <td class="py-3 px-4 text-sm text-base-content/70">
+        {% if entry.absence_type.value == 'vacation' %}
+        {% set vacation_days_display = entry.vacation_days if entry.vacation_days is not none else 1 %}
+        <span class="badge badge-primary badge-outline badge-sm">
+            {{ vacation_days_display|format_days }} Tage
+        </span>
+        {% endif %}
         {% if entry.notes %}
         <div class="tooltip tooltip-top" data-tip="{{ entry.notes }}">
             {{ icon("message-square", class="w-4 h-4 text-base-content/40") }}

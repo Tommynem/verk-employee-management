@@ -3,8 +3,9 @@
 Routes follow VaWW REST+HTMX pattern with HTML partial responses.
 """
 
+import calendar
 from datetime import date, time, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
@@ -16,7 +17,6 @@ from sqlalchemy.orm import Session
 from source.api.context import render_template
 from source.api.dependencies import get_current_user_id, get_db
 from source.api.schemas import TimeEntryCreate, TimeEntryUpdate
-from source.core.holidays import is_holiday
 from source.core.i18n import GERMAN_MONTHS
 from source.database import calculations
 from source.database.enums import AbsenceType, RecordStatus
@@ -67,13 +67,38 @@ def parse_time_string(time_str: str | None, field_name: str) -> time | None:
         raise HTTPException(status_code=422, detail=f"Ungültige {field_name}") from e
 
 
-def normalize_vacation_fields(data: dict, current_absence_type: AbsenceType | None = None) -> None:
+def parse_vacation_days(value: object | None) -> Decimal | None:
+    """Parse optional vacation day values, accepting German decimal commas."""
+    vacation_days_str = str(value).strip().replace(",", ".") if value is not None else ""
+    if not vacation_days_str:
+        return None
+
+    try:
+        return Decimal(vacation_days_str).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError) as e:
+        raise HTTPException(status_code=422, detail="Ungültige Urlaubstage") from e
+
+
+def normalize_vacation_fields(
+    data: dict,
+    current_absence_type: AbsenceType | None = None,
+    *,
+    is_create: bool = False,
+) -> None:
     """Vacation days are non-working days, so stored time fields must be empty."""
     target_absence_type = data.get("absence_type", current_absence_type)
     if target_absence_type == AbsenceType.VACATION or current_absence_type == AbsenceType.VACATION:
         data["start_time"] = None
         data["end_time"] = None
         data["break_minutes"] = 0
+
+    if target_absence_type == AbsenceType.VACATION:
+        if data.get("vacation_days") is None and (
+            is_create or "vacation_days" in data or data.get("absence_type") == AbsenceType.VACATION
+        ):
+            data["vacation_days"] = Decimal("1.00")
+    elif is_create or "absence_type" in data or "vacation_days" in data:
+        data["vacation_days"] = None
 
 
 def get_entry_context(entry: TimeEntry, db: Session, user_id: int) -> dict:
@@ -101,8 +126,12 @@ def get_entry_context(entry: TimeEntry, db: Session, user_id: int) -> dict:
     target_hours_value = calculations.target_hours(entry, settings)
     balance_value = calculations.balance(entry, settings)
 
-    # Check if date is a holiday
-    is_holiday_date, holiday_name = is_holiday(entry.work_date, return_name=True)
+    # Check if date is a policy non-working day
+    is_holiday_date, holiday_name = calculations.is_non_working_day_for_settings(
+        entry.work_date,
+        settings,
+        return_name=True,
+    )
 
     return {
         "entry": entry,
@@ -216,8 +245,12 @@ async def list_time_entries(
     # Pre-compute calculated values for each entry
     entries_with_calculations = []
     for entry in entries:
-        # Check if date is a holiday
-        is_holiday_date, holiday_name = is_holiday(entry.work_date, return_name=True)
+        # Check if date is a policy non-working day
+        is_holiday_date, holiday_name = calculations.is_non_working_day_for_settings(
+            entry.work_date,
+            settings,
+            return_name=True,
+        )
 
         entries_with_calculations.append(
             {
@@ -298,6 +331,10 @@ async def list_time_entries(
         else:
             all_entries = entries  # Fall back to just the month's entries
 
+        vacation_entries = (
+            db.query(TimeEntry).filter(TimeEntry.user_id == user_id).order_by(TimeEntry.work_date.asc()).all()
+        )
+
         # Calculate monthly summary with all historical entries
         service = TimeCalculationService()
         summary = service.monthly_summary(all_entries, settings, year, month)
@@ -344,11 +381,14 @@ async def list_time_entries(
             or settings.vacation_carryover_days is not None
         ):
             vacation_service = VacationCalculationService()
-            vacation_balance = vacation_service.calculate_balance(all_entries, settings, date.today())
-            vacation_warning = vacation_service.get_expiry_warning(vacation_balance, date.today())
+            month_end = date(year, month, calendar.monthrange(year, month)[1])
+            vacation_as_of = today if is_current_month else month_end
+            vacation_balance = vacation_service.calculate_balance(vacation_entries, settings, vacation_as_of)
+            vacation_warning = vacation_service.get_expiry_warning(vacation_balance, vacation_as_of)
 
             context["vacation_balance"] = vacation_balance
             context["vacation_warning"] = vacation_warning
+            context["vacation_as_of"] = vacation_as_of
 
         # Add all monthly context
         context.update(
@@ -439,8 +479,8 @@ async def new_row(
                 # Non-working day (disabled in settings) - no break time
                 default_break_minutes = 0
 
-        # Check for German public holidays - override break time to 0
-        if is_holiday(default_date):
+        # Check for policy non-working days - override break time to 0
+        if calculations.is_non_working_day_for_settings(default_date, settings):
             default_break_minutes = 0
 
     html = render_template(
@@ -466,6 +506,7 @@ async def create_time_entry(
     end_time: str | None = Form(None),
     break_minutes: int = Form(0),
     absence_type: str = Form("none"),
+    vacation_days: str | None = Form(None),
     notes: str | None = Form(None),
 ) -> HTMLResponse:
     """Create new time entry.
@@ -491,6 +532,7 @@ async def create_time_entry(
         # Parse time strings to time objects if provided
         parsed_start_time = parse_time_string(start_time, "Startzeit")
         parsed_end_time = parse_time_string(end_time, "Endzeit")
+        parsed_vacation_days = parse_vacation_days(vacation_days)
 
         # Validate with Pydantic schema
         entry_data = TimeEntryCreate(
@@ -499,10 +541,11 @@ async def create_time_entry(
             end_time=parsed_end_time,
             break_minutes=break_minutes,
             absence_type=AbsenceType(absence_type),
+            vacation_days=parsed_vacation_days,
             notes=notes,
         )
         entry_dict = entry_data.model_dump()
-        normalize_vacation_fields(entry_dict)
+        normalize_vacation_fields(entry_dict, is_create=True)
 
         # Create database entry
         entry = TimeEntry(
@@ -512,6 +555,7 @@ async def create_time_entry(
             end_time=entry_dict["end_time"],
             break_minutes=entry_dict["break_minutes"],
             absence_type=entry_dict["absence_type"],
+            vacation_days=entry_dict["vacation_days"],
             notes=entry_dict["notes"],
             status=RecordStatus.DRAFT,
         )
@@ -679,9 +723,6 @@ async def edit_row(
 
     entry_context = get_entry_context(entry, db, user_id)
 
-    # Check if date is a holiday
-    is_holiday_date, holiday_name = is_holiday(entry.work_date, return_name=True)
-
     # Provide mock loop object for standalone rendering
     html = render_template(
         request,
@@ -690,8 +731,8 @@ async def edit_row(
         actual_hours=entry_context["actual_hours"],
         target_hours=entry_context["target_hours"],
         balance=entry_context["balance"],
-        is_holiday=is_holiday_date,
-        holiday_name=holiday_name,
+        is_holiday=entry_context["is_holiday"],
+        holiday_name=entry_context["holiday_name"],
         loop={"index": 0},
     )
     return HTMLResponse(content=html, status_code=200)
@@ -855,14 +896,17 @@ async def update_time_entry(
             if absence_type_value:
                 update_dict["absence_type"] = AbsenceType(absence_type_value)
 
+        if "vacation_days" in form_data:
+            update_dict["vacation_days"] = parse_vacation_days(form_data.get("vacation_days"))
+
         if "notes" in form_data:
             notes_value = form_data.get("notes")
             update_dict["notes"] = notes_value if notes_value else None
 
         # Validate with Pydantic schema
         if update_dict:
-            TimeEntryUpdate(**update_dict)
             normalize_vacation_fields(update_dict, entry.absence_type)
+            TimeEntryUpdate(**update_dict)
 
         # Apply updates
         for key, value in update_dict.items():

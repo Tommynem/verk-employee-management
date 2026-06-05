@@ -162,16 +162,10 @@ class TimeCalculationService:
                 absence_type = entry.absence_type
                 has_entry = True
             else:
-                # No entry - create a dummy entry just to get target hours
+                # No entry - create a dummy entry just to get target hours.
                 actual = Decimal("0.00")
-                # Calculate target based on weekday
-                weekday = current_date.weekday()
-                if weekday < 5:  # Mon-Fri
-                    target = (settings.weekly_target_hours / Decimal("5")).quantize(
-                        Decimal("0.01"), rounding=ROUND_HALF_UP
-                    )
-                else:
-                    target = Decimal("0.00")
+                dummy_entry = TimeEntry(work_date=current_date, absence_type=AbsenceType.NONE)
+                target = self.target_hours(dummy_entry, settings)
                 day_balance = actual - target
                 absence_type = AbsenceType.NONE
                 has_entry = False

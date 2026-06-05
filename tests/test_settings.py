@@ -8,6 +8,7 @@ Routes tested:
 - PATCH /settings/weekday-defaults -> Update weekday defaults, return form partial
 """
 
+from datetime import date as date_type
 from decimal import Decimal
 
 from source.database.models import UserSettings
@@ -105,6 +106,39 @@ class TestSettingsPage:
         # Should indicate weekends are non-working (empty inputs or checkboxes unchecked)
         assert "Samstag" in response.text
         assert "Sonntag" in response.text
+
+    def test_settings_page_includes_vacation_state_choices_and_default_closures(self, client, db_session):
+        """GET /settings renders all holiday states and default company closure checkboxes."""
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        assert 'name="holiday_state"' in response.text
+        state_codes = (
+            "BW",
+            "BY",
+            "BE",
+            "BB",
+            "HB",
+            "HH",
+            "HE",
+            "MV",
+            "NI",
+            "NW",
+            "RP",
+            "SL",
+            "SN",
+            "ST",
+            "SH",
+            "TH",
+        )
+        for code in state_codes:
+            assert f'value="{code}"' in response.text
+        assert "Nordrhein-Westfalen" in response.text
+        assert 'name="employment_start_date"' in response.text
+        assert 'name="company_closure_12_24_enabled"' in response.text
+        assert 'name="company_closure_12_31_enabled"' in response.text
+        assert "24.12 Heiligabend" in response.text
+        assert "31.12 Silvester" in response.text
 
 
 class TestWeekdayDefaultsUpdate:
@@ -914,6 +948,164 @@ class TestVacationSettingsUpdate:
         from datetime import date as date_type
 
         assert settings.vacation_carryover_expires == date_type(2026, 3, 31)
+
+    def test_patch_vacation_settings_updates_holiday_state_and_employment_start(self, client, db_session):
+        """PATCH updates holiday_state and employment_start_date successfully."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "holiday_state": "NW",
+                "employment_start_date": "2026-01-15",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.headers["HX-Trigger"] == "settingsUpdated"
+
+        db_session.refresh(settings)
+        assert settings.holiday_state == "NW"
+        assert settings.employment_start_date == date_type(2026, 1, 15)
+
+    def test_patch_vacation_settings_clears_holiday_state_and_employment_start(self, client, db_session):
+        """PATCH clears holiday_state and employment_start_date when empty strings are provided."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            holiday_state="NW",
+            employment_start_date=date_type(2026, 1, 15),
+        )
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "holiday_state": "",
+                "employment_start_date": "",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+
+        db_session.refresh(settings)
+        assert settings.holiday_state is None
+        assert settings.employment_start_date is None
+
+    def test_patch_vacation_settings_rejects_invalid_holiday_state(self, client, db_session):
+        """PATCH rejects unsupported holiday_state codes."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"))
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "holiday_state": "NRW",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 422
+        assert "Ungültiges Bundesland" in response.text
+
+    def test_patch_vacation_settings_applies_default_company_closures(self, client, db_session):
+        """PATCH applies default recurring company closures when none exist yet."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"), schedule_json={})
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+
+        db_session.refresh(settings)
+        closures = settings.schedule_json["company_closures"]
+        assert closures["12-24"]["enabled"] is True
+        assert closures["12-24"]["recurring"] is True
+        assert closures["12-24"]["counts_as_vacation"] is False
+        assert closures["12-31"]["enabled"] is True
+        assert closures["12-31"]["recurring"] is True
+        assert closures["12-31"]["counts_as_vacation"] is False
+
+    def test_patch_vacation_settings_can_disable_default_company_closures(self, client, db_session):
+        """PATCH can disable default recurring company closures through checkbox fields."""
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("40.00"), schedule_json={})
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        response = client.patch(
+            "/settings/vacation",
+            data={
+                "company_closure_12_24_enabled": "false",
+                "company_closure_12_31_enabled": "false",
+                "updated_at": settings.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+
+        db_session.refresh(settings)
+        closures = settings.schedule_json["company_closures"]
+        assert closures["12-24"]["enabled"] is False
+        assert closures["12-24"]["counts_as_vacation"] is False
+        assert closures["12-31"]["enabled"] is False
+        assert closures["12-31"]["counts_as_vacation"] is False
+
+    def test_get_settings_includes_saved_vacation_schedule_fields(self, client, db_session):
+        """GET /settings renders saved holiday_state, employment_start_date, and company closures."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            holiday_state="NW",
+            employment_start_date=date_type(2026, 1, 15),
+            schedule_json={
+                "company_closures": {
+                    "12-24": {
+                        "day": 24,
+                        "month": 12,
+                        "name": "Heiligabend",
+                        "recurring": True,
+                        "enabled": False,
+                        "counts_as_vacation": False,
+                    },
+                    "12-31": {
+                        "day": 31,
+                        "month": 12,
+                        "name": "Silvester",
+                        "recurring": True,
+                        "enabled": True,
+                        "counts_as_vacation": False,
+                    },
+                }
+            },
+        )
+        db_session.add(settings)
+        db_session.commit()
+
+        response = client.get("/settings")
+
+        assert response.status_code == 200
+        assert '<option value="NW" selected>Nordrhein-Westfalen</option>' in response.text
+        assert 'name="employment_start_date"' in response.text
+        assert 'value="15.01.2026"' in response.text
+        assert "24.12 Heiligabend" in response.text
+        assert "31.12 Silvester" in response.text
 
     def test_patch_vacation_settings_sets_hx_trigger(self, client, db_session):
         """PATCH sets HX-Trigger: settingsUpdated header."""

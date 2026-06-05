@@ -379,7 +379,7 @@
             </div>
             <div class="summary-item">
                 <div class="summary-label">Urlaubstage im Monat</div>
-                <div class="summary-value">{{ monthly_vacation_days|default(0) }}</div>
+                <div class="summary-value">{{ monthly_vacation_days|default(0)|format_days }}</div>
             </div>
             <div class="summary-item">
                 <div class="summary-label">Endsaldo</div>

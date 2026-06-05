@@ -5,11 +5,10 @@ vacation day balances following German law (Bundesurlaubsgesetz).
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
-from dateutil.relativedelta import relativedelta
-
+from source.database.calculations import is_non_working_day_for_settings
 from source.database.enums import AbsenceType
 from source.database.models import TimeEntry, UserSettings
 
@@ -42,13 +41,26 @@ class VacationCalculationService:
     and generating expiry warnings.
     """
 
-    def count_vacation_days(self, entries: list[TimeEntry], start: date, end: date) -> Decimal:
+    def _vacation_days_for_entry(self, entry: TimeEntry) -> Decimal:
+        """Return the vacation day amount, defaulting legacy rows to one day."""
+        if entry.vacation_days is None:
+            return Decimal("1.00")
+        return Decimal(str(entry.vacation_days))
+
+    def count_vacation_days(
+        self,
+        entries: list[TimeEntry],
+        start: date,
+        end: date,
+        settings: UserSettings | None = None,
+    ) -> Decimal:
         """Count weekday vacation days in date range.
 
         Args:
             entries: List of TimeEntry instances
             start: Start date (inclusive)
             end: End date (inclusive)
+            settings: Optional UserSettings for holiday/company closure policy
 
         Returns:
             Decimal number of vacation days in range
@@ -59,9 +71,38 @@ class VacationCalculationService:
                 entry.absence_type == AbsenceType.VACATION
                 and start <= entry.work_date <= end
                 and entry.work_date.weekday() < 5
+                and not is_non_working_day_for_settings(entry.work_date, settings)
             ):
-                count += Decimal("1")
+                count += self._vacation_days_for_entry(entry)
         return count
+
+    def _balance_period_start(self, settings: UserSettings, as_of: date) -> date | None:
+        """Return the first date whose vacation usage applies to the current balance."""
+        tracking_start = settings.tracking_start_date
+        if tracking_start is not None:
+            if as_of < tracking_start:
+                return None
+            if as_of.year == tracking_start.year:
+                return tracking_start
+
+        return date(as_of.year, 1, 1)
+
+    def _base_entitlement(self, settings: UserSettings, as_of: date) -> Decimal:
+        """Return the non-carryover entitlement for the balance period."""
+        initial_days = settings.initial_vacation_days or Decimal("0")
+        annual_days = settings.annual_vacation_days or Decimal("0")
+        tracking_start = settings.tracking_start_date
+
+        if tracking_start is None:
+            return initial_days if settings.initial_vacation_days is not None else annual_days
+
+        if as_of < tracking_start:
+            return Decimal("0")
+
+        if as_of.year == tracking_start.year:
+            return initial_days
+
+        return annual_days
 
     def calculate_balance(self, entries: list[TimeEntry], settings: UserSettings, as_of: date) -> VacationBalance:
         """Calculate vacation balance as of a given date.
@@ -75,8 +116,6 @@ class VacationCalculationService:
             VacationBalance with current entitlement and usage
         """
         # Handle None settings fields
-        initial_days = settings.initial_vacation_days or Decimal("0")
-        annual_days = settings.annual_vacation_days or Decimal("0")
         carryover_days = settings.vacation_carryover_days or Decimal("0")
         carryover_expires = settings.vacation_carryover_expires
 
@@ -88,36 +127,46 @@ class VacationCalculationService:
         else:
             valid_carryover = carryover_days
 
-        # Calculate annual entitlement based on full years tracked
-        annual_entitlement = Decimal("0")
-        if settings.tracking_start_date is not None and annual_days > 0:
-            # Calculate number of full years between tracking_start_date and as_of
-            years_diff = relativedelta(as_of, settings.tracking_start_date).years
-            if years_diff > 0:
-                annual_entitlement = annual_days * Decimal(str(years_diff))
-
-        # Total entitlement
-        total_entitlement = initial_days + valid_carryover + annual_entitlement
+        # Total entitlement for the current vacation year. The opening balance is
+        # a one-time balance for the first tracked year; later years use the
+        # regular annual entitlement unless explicit carryover is configured.
+        base_entitlement = self._base_entitlement(settings, as_of)
+        total_entitlement = base_entitlement + valid_carryover
 
         # Count days used
-        if settings.tracking_start_date is not None:
-            days_used = self.count_vacation_days(entries, settings.tracking_start_date, as_of)
+        balance_period_start = self._balance_period_start(settings, as_of)
+        if balance_period_start is None:
+            days_used = Decimal("0")
         else:
-            # No tracking start date, count all vacation entries up to as_of
-            if entries:
-                earliest_date = min(e.work_date for e in entries)
-                days_used = self.count_vacation_days(entries, earliest_date, as_of)
-            else:
-                days_used = Decimal("0")
+            days_used = self.count_vacation_days(entries, balance_period_start, as_of, settings)
+
+        remaining_carryover = valid_carryover
+        if valid_carryover > 0 and balance_period_start is not None:
+            remaining_carryover = max(valid_carryover - days_used, Decimal("0"))
 
         # Days remaining
         days_remaining = total_entitlement - days_used
+        if carryover_expires is not None and as_of > carryover_expires and balance_period_start is not None:
+            used_through_expiry = self.count_vacation_days(
+                entries,
+                balance_period_start,
+                carryover_expires,
+                settings,
+            )
+            used_after_expiry = self.count_vacation_days(
+                entries,
+                max(balance_period_start, carryover_expires + timedelta(days=1)),
+                as_of,
+                settings,
+            )
+            base_days_used = max(used_through_expiry - carryover_days, Decimal("0")) + used_after_expiry
+            days_remaining = base_entitlement - base_days_used
 
         return VacationBalance(
             total_entitlement=total_entitlement,
             days_used=days_used,
             days_remaining=days_remaining,
-            carryover_days=valid_carryover,
+            carryover_days=remaining_carryover,
             carryover_expires=carryover_expires,
         )
 

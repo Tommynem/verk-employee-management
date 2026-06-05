@@ -38,6 +38,7 @@ class TimeEntry(Base):
     # Break and notes
     break_minutes: int = Column(Integer, default=0, nullable=False)
     notes: str | None = Column(String, nullable=True)
+    vacation_days: Decimal | None = Column(Numeric(4, 2), nullable=True)
 
     # Status and type enums (use native_enum=False for SQLite compatibility)
     absence_type: AbsenceType = Column(Enum(AbsenceType, native_enum=False), default=AbsenceType.NONE, nullable=False)
@@ -83,6 +84,8 @@ class UserSettings(Base):
     annual_vacation_days: Decimal | None = Column(Numeric(5, 2), nullable=True)
     vacation_carryover_days: Decimal | None = Column(Numeric(5, 2), nullable=True)
     vacation_carryover_expires: date | None = Column(Date, nullable=True)
+    holiday_state: str | None = Column(String, nullable=True)
+    employment_start_date: date | None = Column(Date, nullable=True)
 
     # Printable employee profile for exports
     employee_first_name: str | None = Column(String, nullable=True)

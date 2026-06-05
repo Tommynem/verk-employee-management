@@ -19,6 +19,44 @@ from source.database.models import UserSettings
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 EMPLOYEE_ID_SOURCES = {"internal", "custom"}
+HOLIDAY_STATE_CHOICES = (
+    ("", "Bundesweit"),
+    ("BW", "Baden-Württemberg"),
+    ("BY", "Bayern"),
+    ("BE", "Berlin"),
+    ("BB", "Brandenburg"),
+    ("HB", "Bremen"),
+    ("HH", "Hamburg"),
+    ("HE", "Hessen"),
+    ("MV", "Mecklenburg-Vorpommern"),
+    ("NI", "Niedersachsen"),
+    ("NW", "Nordrhein-Westfalen"),
+    ("RP", "Rheinland-Pfalz"),
+    ("SL", "Saarland"),
+    ("SN", "Sachsen"),
+    ("ST", "Sachsen-Anhalt"),
+    ("SH", "Schleswig-Holstein"),
+    ("TH", "Thüringen"),
+)
+HOLIDAY_STATE_CODES = {code for code, _label in HOLIDAY_STATE_CHOICES}
+DEFAULT_COMPANY_CLOSURES = {
+    "12-24": {
+        "day": 24,
+        "month": 12,
+        "name": "Heiligabend",
+        "recurring": True,
+        "enabled": True,
+        "counts_as_vacation": False,
+    },
+    "12-31": {
+        "day": 31,
+        "month": 12,
+        "name": "Silvester",
+        "recurring": True,
+        "enabled": True,
+        "counts_as_vacation": False,
+    },
+}
 
 
 def _optional_text(value: object, field_label: str, max_length: int = 100) -> str | None:
@@ -29,6 +67,83 @@ def _optional_text(value: object, field_label: str, max_length: int = 100) -> st
     if len(text) > max_length:
         raise HTTPException(status_code=422, detail=f"{field_label} darf höchstens {max_length} Zeichen lang sein")
     return text
+
+
+def _default_company_closures() -> dict[str, dict[str, object]]:
+    """Return a writable copy of the default recurring company closures."""
+    return {key: value.copy() for key, value in DEFAULT_COMPANY_CLOSURES.items()}
+
+
+def _company_closures_for_settings(settings: UserSettings | None) -> dict[str, dict[str, object]]:
+    """Return company closures for the vacation form, applying defaults when absent."""
+    closures = _default_company_closures()
+    configured = settings.schedule_json.get("company_closures") if settings and settings.schedule_json else None
+    if not isinstance(configured, dict) or not configured:
+        return closures
+
+    for key, configured_value in configured.items():
+        if not isinstance(configured_value, dict):
+            continue
+        merged = closures.get(key, {}).copy()
+        merged.update(configured_value)
+        closures[key] = merged
+
+    return closures
+
+
+def _settings_template_context(settings: UserSettings | None) -> dict[str, object]:
+    """Build shared settings template context."""
+    return {
+        "settings": settings,
+        "holiday_state_choices": HOLIDAY_STATE_CHOICES,
+        "company_closures": _company_closures_for_settings(settings),
+    }
+
+
+def _parse_optional_date(value: object) -> date | None:
+    """Parse optional date fields accepting German and ISO formats."""
+    date_str = str(value).strip() if value is not None else ""
+    if not date_str:
+        return None
+
+    from datetime import datetime
+
+    try:
+        return datetime.strptime(date_str, "%d.%m.%Y").date()
+    except ValueError:
+        try:
+            return date.fromisoformat(date_str)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail="Ungültiges Datumsformat") from e
+
+
+def _form_bool(form_data: object, field_name: str, default: bool) -> bool:
+    """Read a checkbox value from Starlette FormData, including hidden false fallbacks."""
+    values = form_data.getlist(field_name) if hasattr(form_data, "getlist") else []
+    if not values:
+        return default
+    return any(str(value).lower() in {"1", "true", "on", "yes"} for value in values)
+
+
+def _save_company_closures(settings: UserSettings, form_data: object) -> None:
+    """Persist default recurring company closure settings from the vacation form."""
+    if not settings.schedule_json:
+        settings.schedule_json = {}
+
+    closures = _company_closures_for_settings(settings)
+
+    for key, default_closure in DEFAULT_COMPANY_CLOSURES.items():
+        field_name = f"company_closure_{key.replace('-', '_')}_enabled"
+        current_closure = closures.get(key, {}).copy()
+        current_enabled = bool(current_closure.get("enabled", default_closure["enabled"]))
+        updated_closure = default_closure.copy()
+        updated_closure.update(current_closure)
+        updated_closure["enabled"] = _form_bool(form_data, field_name, current_enabled)
+        updated_closure["recurring"] = True
+        updated_closure["counts_as_vacation"] = False
+        closures[key] = updated_closure
+
+    settings.schedule_json["company_closures"] = closures
 
 
 @router.get("", response_class=HTMLResponse)
@@ -51,11 +166,12 @@ async def settings_page(
 
     # Detect if this is an HTMX request
     is_htmx = request.headers.get("HX-Request") == "true"
+    context = _settings_template_context(settings)
 
     if is_htmx:
-        html = render_template(request, "partials/_settings_weekday_defaults.html", settings=settings)
+        html = render_template(request, "partials/_settings_weekday_defaults.html", **context)
     else:
-        html = render_template(request, "pages/settings.html", settings=settings)
+        html = render_template(request, "pages/settings.html", **context)
 
     return HTMLResponse(content=html, status_code=200)
 
@@ -340,6 +456,9 @@ async def update_vacation_settings(
     - annual_vacation_days: Decimal (e.g., 30.0)
     - vacation_carryover_days: Decimal (e.g., 5.0)
     - vacation_carryover_expires: Date (e.g., 2026-03-31)
+    - holiday_state: Optional German Bundesland holiday code
+    - employment_start_date: Date (e.g., 2026-01-01)
+    - company_closures: Default recurring non-vacation closures in schedule_json
 
     Supports German number format (comma as decimal separator).
     Supports German date format (DD.MM.YYYY) with fallback to ISO.
@@ -450,10 +569,19 @@ async def update_vacation_settings(
     else:
         settings.vacation_carryover_expires = None
 
+    holiday_state = str(form_data.get("holiday_state") or "").strip()
+    if holiday_state not in HOLIDAY_STATE_CODES:
+        raise HTTPException(status_code=422, detail="Ungültiges Bundesland")
+    settings.holiday_state = holiday_state or None
+
+    settings.employment_start_date = _parse_optional_date(form_data.get("employment_start_date", ""))
+    _save_company_closures(settings, form_data)
+    flag_modified(settings, "schedule_json")
+
     db.commit()
     db.refresh(settings)
 
-    html = render_template(request, "partials/_settings_vacation.html", settings=settings)
+    html = render_template(request, "partials/_settings_vacation.html", **_settings_template_context(settings))
     response = HTMLResponse(content=html, status_code=200)
     response.headers["HX-Trigger"] = "settingsUpdated"
     return response

@@ -13,7 +13,10 @@ Tests verify:
 from datetime import date, timedelta
 from decimal import Decimal
 
-from tests.factories import UserSettingsFactory, VacationEntryFactory
+from freezegun import freeze_time
+
+from source.database.models import TimeEntry
+from tests.factories import TimeEntryFactory, UserSettingsFactory, VacationEntryFactory
 
 
 class TestVacationKPIDisplay:
@@ -196,6 +199,150 @@ class TestVacationKPIDisplay:
         assert "Resturlaub" in response.text
         # Look for zero display (could be "0" or "0.00")
         assert "0" in response.text
+
+    @freeze_time("2026-01-20")
+    def test_vacation_card_preserves_fractional_remaining_days(self, client, db_session):
+        """Vacation card renders fractional remaining days without truncating."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            initial_vacation_days=Decimal("30"),
+            tracking_start_date=date(2026, 1, 1),
+        )
+        db_session.add(settings)
+        db_session.add(
+            VacationEntryFactory.build(
+                user_id=1,
+                work_date=date(2026, 1, 15),
+                vacation_days=Decimal("0.50"),
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        assert "Resturlaub" in response.text
+        assert "29,5 Tage" in response.text
+
+    @freeze_time("2026-06-05")
+    def test_vacation_card_uses_viewed_month_end_for_past_month(self, client, db_session):
+        """Past month vacation card is calculated as of the viewed month end."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            initial_vacation_days=Decimal("10"),
+            annual_vacation_days=Decimal("10"),
+            tracking_start_date=date(2026, 1, 1),
+        )
+        db_session.add(settings)
+        db_session.add(VacationEntryFactory.build(user_id=1, work_date=date(2026, 1, 15)))
+        db_session.add(VacationEntryFactory.build(user_id=1, work_date=date(2026, 2, 2)))
+        db_session.commit()
+
+        response = client.get("/time-entries?month=1&year=2026")
+
+        assert response.status_code == 200
+        assert "Resturlaub" in response.text
+        assert "9 Tage" in response.text
+
+    def test_create_vacation_defaults_blank_vacation_days(self, client, db_session):
+        """POST vacation entry stores 1.00 vacation_days when the form sends blank."""
+        response = client.post(
+            "/time-entries",
+            data={
+                "work_date": "2026-01-15",
+                "absence_type": "vacation",
+                "vacation_days": "",
+            },
+        )
+
+        assert response.status_code == 201
+        entry = db_session.query(TimeEntry).filter(TimeEntry.work_date == date(2026, 1, 15)).one()
+        assert entry.vacation_days == Decimal("1.00")
+
+    def test_update_vacation_defaults_blank_vacation_days(self, client, db_session):
+        """PATCH to vacation stores 1.00 vacation_days when the value is blank."""
+        entry = TimeEntryFactory.build(user_id=1, work_date=date(2026, 1, 15))
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        response = client.patch(
+            f"/time-entries/{entry.id}",
+            data={
+                "absence_type": "vacation",
+                "vacation_days": "",
+                "updated_at": entry.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        db_session.refresh(entry)
+        assert entry.vacation_days == Decimal("1.00")
+
+    def test_update_non_vacation_clears_vacation_days(self, client, db_session):
+        """PATCH away from vacation clears vacation_days."""
+        entry = VacationEntryFactory.build(
+            user_id=1,
+            work_date=date(2026, 1, 15),
+            vacation_days=Decimal("0.50"),
+        )
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        response = client.patch(
+            f"/time-entries/{entry.id}",
+            data={
+                "absence_type": "none",
+                "updated_at": entry.updated_at.isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        db_session.refresh(entry)
+        assert entry.vacation_days is None
+
+    @freeze_time("2026-01-01")
+    def test_vacation_card_shows_new_year_entitlement_after_opening_balance_used(self, client, db_session):
+        """GET /time-entries shows 30 days on Jan 1 after the 2025 opening balance was used."""
+        settings = UserSettingsFactory.build(
+            user_id=1,
+            initial_vacation_days=Decimal("19"),
+            annual_vacation_days=Decimal("30"),
+            tracking_start_date=date(2025, 7, 1),
+        )
+        db_session.add(settings)
+
+        vacation_dates_2025 = [
+            date(2025, 7, 4),
+            date(2025, 8, 1),
+            date(2025, 9, 5),
+            date(2025, 9, 8),
+            date(2025, 9, 9),
+            date(2025, 10, 1),
+            date(2025, 10, 2),
+            date(2025, 10, 6),
+            date(2025, 10, 7),
+            date(2025, 10, 8),
+            date(2025, 10, 9),
+            date(2025, 10, 10),
+            date(2025, 10, 13),
+            date(2025, 10, 14),
+            date(2025, 11, 7),
+            date(2025, 11, 10),
+            date(2025, 12, 15),
+            date(2025, 12, 29),
+            date(2025, 12, 30),
+        ]
+        for work_date in vacation_dates_2025:
+            db_session.add(VacationEntryFactory.build(user_id=1, work_date=work_date))
+        db_session.commit()
+
+        response = client.get("/time-entries")
+
+        assert response.status_code == 200
+        assert "Resturlaub" in response.text
+        assert "30 Tage" in response.text
 
     def test_vacation_card_includes_carryover_in_total(self, client, db_session):
         """Vacation card shows total including carryover days."""

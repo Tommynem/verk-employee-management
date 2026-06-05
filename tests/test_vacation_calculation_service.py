@@ -91,6 +91,22 @@ class TestCountVacationDays:
         assert result == Decimal("3")
 
     @pytest.mark.unit
+    def test_count_vacation_days_uses_fractional_vacation_days(self):
+        """Vacation entries consume their configured decimal vacation_days."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 1, 13), vacation_days=Decimal("0.50")),
+            VacationEntryFactory.build(work_date=date(2026, 1, 14), vacation_days=Decimal("0.25")),
+            VacationEntryFactory.build(work_date=date(2026, 1, 15), vacation_days=None),  # Legacy row
+        ]
+        service = VacationCalculationService()
+        start = date(2026, 1, 1)
+        end = date(2026, 1, 31)
+
+        result = service.count_vacation_days(entries, start, end)
+
+        assert result == Decimal("1.75")
+
+    @pytest.mark.unit
     def test_count_vacation_days_respects_date_range(self):
         """Only counts vacation days within date range."""
         entries = [
@@ -139,6 +155,66 @@ class TestCountVacationDays:
         result = service.count_vacation_days(entries, start, end)
 
         assert result == Decimal("1")
+
+    @pytest.mark.unit
+    def test_count_vacation_days_ignores_german_public_holidays(self):
+        """Vacation entries on known German public holidays do not consume vacation days."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2025, 10, 2)),  # Thursday
+            VacationEntryFactory.build(work_date=date(2025, 10, 3)),  # German Unity Day
+        ]
+        service = VacationCalculationService()
+        start = date(2025, 10, 1)
+        end = date(2025, 10, 31)
+
+        result = service.count_vacation_days(entries, start, end)
+
+        assert result == Decimal("1")
+
+    @pytest.mark.unit
+    def test_count_vacation_days_ignores_bundesland_holidays_from_settings(self):
+        """Vacation entries on Bundesland holidays do not consume vacation days."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 6, 3)),  # Wednesday
+            VacationEntryFactory.build(work_date=date(2026, 6, 4)),  # Fronleichnam in NRW
+        ]
+        settings = UserSettingsFactory.build(holiday_state="NW")
+        service = VacationCalculationService()
+        start = date(2026, 6, 1)
+        end = date(2026, 6, 30)
+
+        result = service.count_vacation_days(entries, start, end, settings)
+
+        assert result == Decimal("1.00")
+
+    @pytest.mark.unit
+    def test_count_vacation_days_ignores_non_vacation_company_closures(self):
+        """Vacation entries on non-vacation company closures do not consume days."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 12, 23)),
+            VacationEntryFactory.build(work_date=date(2026, 12, 24)),
+        ]
+        settings = UserSettingsFactory.build(
+            schedule_json={
+                "company_closures": {
+                    "12-24": {
+                        "day": 24,
+                        "month": 12,
+                        "name": "Heiligabend",
+                        "recurring": True,
+                        "enabled": True,
+                        "counts_as_vacation": False,
+                    }
+                }
+            }
+        )
+        service = VacationCalculationService()
+        start = date(2026, 12, 1)
+        end = date(2026, 12, 31)
+
+        result = service.count_vacation_days(entries, start, end, settings)
+
+        assert result == Decimal("1.00")
 
 
 class TestCalculateBalance:
@@ -211,7 +287,7 @@ class TestCalculateBalance:
 
     @pytest.mark.unit
     def test_calculate_balance_annual_entitlement_adds_per_year(self):
-        """Annual entitlement adds per full year tracked."""
+        """Annual entitlement replaces the opening balance in later vacation years."""
         entries = [
             VacationEntryFactory.build(work_date=date(2026, 6, 15)),
         ]
@@ -227,10 +303,75 @@ class TestCalculateBalance:
 
         balance = service.calculate_balance(entries, settings, as_of)
 
-        # initial_days + (annual_days * 1 year) = 10 + 30 = 40
-        assert balance.total_entitlement == Decimal("40.0")
+        assert balance.total_entitlement == Decimal("30.0")
         assert balance.days_used == Decimal("1")
-        assert balance.days_remaining == Decimal("39.0")
+        assert balance.days_remaining == Decimal("29.0")
+
+    @pytest.mark.unit
+    def test_calculate_balance_opening_balance_and_next_year_entitlement(self):
+        """A mid-year opening balance is exhausted in year one and annual entitlement starts Jan 1."""
+        vacation_dates_2025 = [
+            date(2025, 7, 4),
+            date(2025, 8, 1),
+            date(2025, 9, 5),
+            date(2025, 9, 8),
+            date(2025, 9, 9),
+            date(2025, 10, 1),
+            date(2025, 10, 2),
+            date(2025, 10, 6),
+            date(2025, 10, 7),
+            date(2025, 10, 8),
+            date(2025, 10, 9),
+            date(2025, 10, 10),
+            date(2025, 10, 13),
+            date(2025, 10, 14),
+            date(2025, 11, 7),
+            date(2025, 11, 10),
+            date(2025, 12, 15),
+            date(2025, 12, 29),
+            date(2025, 12, 30),
+        ]
+        entries = [VacationEntryFactory.build(work_date=work_date) for work_date in vacation_dates_2025]
+        settings = UserSettingsFactory.build(
+            initial_vacation_days=Decimal("19.0"),
+            annual_vacation_days=Decimal("30.0"),
+            vacation_carryover_days=Decimal("0.0"),
+            vacation_carryover_expires=None,
+            tracking_start_date=date(2025, 7, 1),
+        )
+        service = VacationCalculationService()
+
+        opening_balance = service.calculate_balance(entries, settings, date(2025, 7, 1))
+        end_of_2025_balance = service.calculate_balance(entries, settings, date(2025, 12, 31))
+        start_of_2026_balance = service.calculate_balance(entries, settings, date(2026, 1, 1))
+
+        assert opening_balance.days_remaining == Decimal("19.0")
+        assert end_of_2025_balance.days_remaining == Decimal("0.0")
+        assert start_of_2026_balance.total_entitlement == Decimal("30.0")
+        assert start_of_2026_balance.days_used == Decimal("0")
+        assert start_of_2026_balance.days_remaining == Decimal("30.0")
+
+    @pytest.mark.unit
+    def test_calculate_balance_does_not_automatically_carry_unused_opening_balance(self):
+        """Unused opening balance expires at year boundary unless explicit carryover is configured."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2025, 7, 4)),
+            VacationEntryFactory.build(work_date=date(2025, 8, 1)),
+        ]
+        settings = UserSettingsFactory.build(
+            initial_vacation_days=Decimal("19.0"),
+            annual_vacation_days=Decimal("30.0"),
+            vacation_carryover_days=Decimal("0.0"),
+            vacation_carryover_expires=None,
+            tracking_start_date=date(2025, 7, 1),
+        )
+        service = VacationCalculationService()
+
+        balance = service.calculate_balance(entries, settings, date(2026, 1, 1))
+
+        assert balance.total_entitlement == Decimal("30.0")
+        assert balance.days_used == Decimal("0")
+        assert balance.days_remaining == Decimal("30.0")
 
     @pytest.mark.unit
     def test_carryover_valid_before_march_31(self):
@@ -274,6 +415,32 @@ class TestCalculateBalance:
         assert balance.carryover_expires == date(2026, 3, 31)
 
     @pytest.mark.unit
+    def test_used_carryover_does_not_reduce_base_entitlement_after_expiry(self):
+        """Vacation taken before carryover expiry consumes carryover before annual entitlement."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 1, 5)),
+            VacationEntryFactory.build(work_date=date(2026, 1, 6)),
+            VacationEntryFactory.build(work_date=date(2026, 1, 7)),
+            VacationEntryFactory.build(work_date=date(2026, 1, 8)),
+            VacationEntryFactory.build(work_date=date(2026, 1, 9)),
+        ]
+        settings = UserSettingsFactory.build(
+            initial_vacation_days=Decimal("30.0"),
+            annual_vacation_days=Decimal("30.0"),
+            vacation_carryover_days=Decimal("5.0"),
+            vacation_carryover_expires=date(2026, 3, 31),
+            tracking_start_date=date(2026, 1, 1),
+        )
+        service = VacationCalculationService()
+        as_of = date(2026, 4, 1)
+
+        balance = service.calculate_balance(entries, settings, as_of)
+
+        assert balance.total_entitlement == Decimal("30.0")
+        assert balance.days_used == Decimal("5")
+        assert balance.days_remaining == Decimal("30.0")
+
+    @pytest.mark.unit
     def test_carryover_exactly_on_march_31_still_valid(self):
         """Carryover is valid on March 31 exactly (inclusive)."""
         entries = []
@@ -292,6 +459,32 @@ class TestCalculateBalance:
         assert balance.total_entitlement == Decimal("30.0")  # Carryover still valid
         assert balance.carryover_days == Decimal("5.0")
         assert balance.carryover_expires == date(2026, 3, 31)
+
+    @pytest.mark.unit
+    def test_carryover_days_reflect_remaining_expiring_days(self):
+        """Returned carryover_days subtracts vacation already allocated to carryover."""
+        entries = [
+            VacationEntryFactory.build(work_date=date(2026, 1, 5)),
+            VacationEntryFactory.build(work_date=date(2026, 1, 6)),
+        ]
+        settings = UserSettingsFactory.build(
+            initial_vacation_days=Decimal("30.0"),
+            annual_vacation_days=Decimal("30.0"),
+            vacation_carryover_days=Decimal("5.0"),
+            vacation_carryover_expires=date(2026, 3, 31),
+            tracking_start_date=date(2026, 1, 1),
+        )
+        service = VacationCalculationService()
+        as_of = date(2026, 3, 15)
+
+        balance = service.calculate_balance(entries, settings, as_of)
+        warning = service.get_expiry_warning(balance, as_of)
+
+        assert balance.total_entitlement == Decimal("35.0")
+        assert balance.days_remaining == Decimal("33.0")
+        assert balance.carryover_days == Decimal("3.0")
+        assert warning is not None
+        assert warning.days_expiring == Decimal("3.0")
 
 
 class TestGetExpiryWarning:

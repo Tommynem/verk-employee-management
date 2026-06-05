@@ -169,6 +169,45 @@ class TestTargetHours:
         )
         assert target_hours(entry, settings) == Decimal("6.40")
 
+    @pytest.mark.unit
+    def test_target_hours_bundesland_holiday_returns_zero(self):
+        """Settings-aware Bundesland holidays have 0 target hours."""
+        entry = TimeEntry(
+            work_date=date(2026, 6, 4),  # Fronleichnam in NRW
+            status=RecordStatus.DRAFT,
+        )
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+            holiday_state="NW",
+        )
+        assert target_hours(entry, settings) == Decimal("0.00")
+
+    @pytest.mark.unit
+    def test_target_hours_non_vacation_company_closure_returns_zero(self):
+        """Configured non-vacation company closures have 0 target hours."""
+        entry = TimeEntry(
+            work_date=date(2026, 12, 24),  # Thursday
+            status=RecordStatus.DRAFT,
+        )
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("32.00"),
+            schedule_json={
+                "company_closures": {
+                    "12-24": {
+                        "day": 24,
+                        "month": 12,
+                        "name": "Heiligabend",
+                        "recurring": True,
+                        "enabled": True,
+                        "counts_as_vacation": False,
+                    }
+                }
+            },
+        )
+        assert target_hours(entry, settings) == Decimal("0.00")
+
 
 class TestBalance:
     @pytest.mark.unit

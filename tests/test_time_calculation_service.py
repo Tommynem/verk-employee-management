@@ -362,6 +362,19 @@ class TestWeeklySummary:
         # Balance: (10-6.4) + (4-6.4) + (-6.4*3 for missing days) = 3.6 - 2.4 - 19.2 = -18.0
         assert summary.total_balance == Decimal("-18.00")
 
+    @pytest.mark.unit
+    def test_weekly_summary_missing_day_uses_bundesland_holiday_policy(self):
+        """Missing days on settings-aware holidays are excluded from target totals."""
+        week_start = date(2026, 6, 1)
+        settings = UserSettingsFactory.build(weekly_target_hours=Decimal("40.00"), holiday_state="NW")
+        service = TimeCalculationService()
+
+        summary = service.weekly_summary([], settings, week_start)
+
+        assert summary.days[3].date == date(2026, 6, 4)
+        assert summary.days[3].target_hours == Decimal("0.00")
+        assert summary.total_target == Decimal("32.00")
+
 
 class TestMonthlySummary:
     """Tests for TimeCalculationService.monthly_summary method."""
@@ -404,7 +417,39 @@ class TestMonthlySummary:
         summary = service.monthly_summary(entries, settings, 2026, 1)
 
         assert summary.total_actual == Decimal("7.50")
-        assert summary.total_target == Decimal("134.40")
+        assert summary.total_target == Decimal("128.00")
+
+    @pytest.mark.unit
+    def test_monthly_summary_excludes_non_vacation_company_closures_from_target(self):
+        """Monthly target totals exclude configured non-vacation company closures."""
+        settings = UserSettingsFactory.build(
+            weekly_target_hours=Decimal("40.00"),
+            schedule_json={
+                "company_closures": {
+                    "12-24": {
+                        "day": 24,
+                        "month": 12,
+                        "name": "Heiligabend",
+                        "recurring": True,
+                        "enabled": True,
+                        "counts_as_vacation": False,
+                    },
+                    "12-31": {
+                        "day": 31,
+                        "month": 12,
+                        "name": "Silvester",
+                        "recurring": True,
+                        "enabled": True,
+                        "counts_as_vacation": False,
+                    },
+                }
+            },
+        )
+        service = TimeCalculationService()
+
+        summary = service.monthly_summary([], settings, 2026, 12)
+
+        assert summary.total_target == Decimal("160.00")
 
     @pytest.mark.unit
     def test_monthly_summary_totals(self):

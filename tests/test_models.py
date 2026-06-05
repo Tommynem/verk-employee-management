@@ -4,10 +4,13 @@ from datetime import date, time
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from source.api.schemas.time_entry import TimeEntryCreate, TimeEntryResponse, TimeEntryUpdate
 from source.database.enums import AbsenceType, RecordStatus
 from source.database.models import TimeEntry, UserSettings
+from tests.factories import HolidayEntryFactory, SickEntryFactory, TimeEntryFactory, VacationEntryFactory
 
 
 class TestTimeEntryModel:
@@ -34,6 +37,7 @@ class TestTimeEntryModel:
         assert entry.start_time is None
         assert entry.end_time is None
         assert entry.notes is None
+        assert entry.vacation_days is None
 
     @pytest.mark.database
     def test_create_time_entry_full(self, db_session):
@@ -156,6 +160,22 @@ class TestTimeEntryModel:
         assert entry.start_time is None
         assert entry.end_time is None
 
+    @pytest.mark.database
+    def test_time_entry_vacation_days_persists_decimal(self, db_session):
+        """Test vacation_days stores fractional vacation day values."""
+        entry = TimeEntry(
+            user_id=1,
+            work_date=date(2026, 1, 28),
+            absence_type=AbsenceType.VACATION,
+            status=RecordStatus.DRAFT,
+            vacation_days=Decimal("0.50"),
+        )
+        db_session.add(entry)
+        db_session.commit()
+        db_session.refresh(entry)
+
+        assert entry.vacation_days == Decimal("0.50")
+
 
 class TestUserSettingsModel:
     """Tests for UserSettings model."""
@@ -175,6 +195,8 @@ class TestUserSettingsModel:
         assert settings.user_id == 1
         assert settings.weekly_target_hours == Decimal("32.00")
         assert settings.schedule_json is None
+        assert settings.holiday_state is None
+        assert settings.employment_start_date is None
 
     @pytest.mark.database
     def test_create_user_settings_with_schedule(self, db_session):
@@ -265,3 +287,73 @@ class TestUserSettingsModel:
 
         assert settings.tracking_start_date is None
         assert settings.initial_hours_offset is None
+
+    @pytest.mark.database
+    def test_user_settings_with_vacation_policy_fields(self, db_session):
+        """Test creating user settings with vacation policy fields."""
+        settings = UserSettings(
+            user_id=1,
+            weekly_target_hours=Decimal("40.00"),
+            holiday_state="BE",
+            employment_start_date=date(2026, 2, 1),
+        )
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+        assert settings.holiday_state == "BE"
+        assert settings.employment_start_date == date(2026, 2, 1)
+
+
+class TestTimeEntryVacationDaysSchema:
+    """Tests for vacation_days schema behavior."""
+
+    def test_time_entry_schema_accepts_optional_vacation_days(self):
+        """Test vacation_days is optional and accepts fractional day values."""
+        update_schema = TimeEntryUpdate()
+        create_schema = TimeEntryCreate(work_date=date(2026, 1, 27), vacation_days=Decimal("0.50"))
+
+        assert update_schema.vacation_days is None
+        assert create_schema.vacation_days == Decimal("0.50")
+
+    def test_time_entry_schema_rejects_negative_vacation_days(self):
+        """Test vacation_days rejects values below 0."""
+        with pytest.raises(ValidationError) as exc_info:
+            TimeEntryUpdate(vacation_days=Decimal("-0.01"))
+
+        errors = exc_info.value.errors()
+        assert errors[0]["loc"] == ("vacation_days",)
+        assert errors[0]["type"] == "greater_than_equal"
+
+    def test_time_entry_schema_rejects_vacation_days_over_one(self):
+        """Test vacation_days rejects values above 1."""
+        with pytest.raises(ValidationError) as exc_info:
+            TimeEntryUpdate(vacation_days=Decimal("1.01"))
+
+        errors = exc_info.value.errors()
+        assert errors[0]["loc"] == ("vacation_days",)
+        assert errors[0]["type"] == "less_than_equal"
+
+    def test_time_entry_response_includes_vacation_days_from_orm(self):
+        """Test TimeEntryResponse includes vacation_days from ORM models."""
+        entry = TimeEntryFactory.build(
+            id=1,
+            user_id=42,
+            work_date=date(2026, 1, 27),
+            vacation_days=Decimal("0.50"),
+        )
+
+        schema = TimeEntryResponse.model_validate(entry)
+
+        assert schema.vacation_days == Decimal("0.50")
+
+
+class TestFactoryDefaults:
+    """Tests for model factory defaults."""
+
+    def test_time_entry_factories_set_vacation_days_defaults(self):
+        """Test vacation entries default to one day and non-vacation entries default to None."""
+        assert TimeEntryFactory.build().vacation_days is None
+        assert VacationEntryFactory.build().vacation_days == Decimal("1.00")
+        assert SickEntryFactory.build().vacation_days is None
+        assert HolidayEntryFactory.build().vacation_days is None

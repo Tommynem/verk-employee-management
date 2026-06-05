@@ -1,3 +1,8 @@
+{% set selected_holiday_state = settings.holiday_state if settings and settings.holiday_state else '' %}
+{% set closures = company_closures if company_closures is defined else {} %}
+{% set christmas_eve_closure = closures.get('12-24', {}) %}
+{% set new_years_eve_closure = closures.get('12-31', {}) %}
+
 <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg mb-6">
     <div class="card-body">
         <h2 class="card-title mb-4">Urlaub Einstellungen</h2>
@@ -72,6 +77,59 @@
                        placeholder="DD.MM.YYYY" />
                 <label class="label">
                     <span class="label-text-alt">Verfallsdatum für übertragene Urlaubstage</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label" for="holiday_state">
+                    <span class="label-text">Bundesland für Feiertage</span>
+                </label>
+                <select id="holiday_state"
+                        name="holiday_state"
+                        class="select select-bordered w-full max-w-xs">
+                    {% for code, label in holiday_state_choices %}
+                    <option value="{{ code }}" {% if code == selected_holiday_state %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <label class="label">
+                    <span class="label-text-alt">Leer bedeutet nur bundesweite Feiertage</span>
+                </label>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label" for="employment_start_date">
+                    <span class="label-text">Eintrittsdatum</span>
+                </label>
+                <input type="text"
+                       id="employment_start_date"
+                       name="employment_start_date"
+                       value="{{ settings.employment_start_date.strftime('%d.%m.%Y') if settings and settings.employment_start_date else '' }}"
+                       class="input input-bordered w-full max-w-xs"
+                       placeholder="DD.MM.YYYY" />
+            </div>
+
+            <div class="form-control mb-4">
+                <span class="label-text font-medium mb-2">Betriebsschließungen</span>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input type="hidden" name="company_closure_12_24_enabled" value="false" />
+                    <input type="checkbox"
+                           name="company_closure_12_24_enabled"
+                           value="true"
+                           class="checkbox checkbox-primary"
+                           {% if christmas_eve_closure.get('enabled', true) %}checked{% endif %} />
+                    <span class="label-text">24.12 Heiligabend</span>
+                </label>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input type="hidden" name="company_closure_12_31_enabled" value="false" />
+                    <input type="checkbox"
+                           name="company_closure_12_31_enabled"
+                           value="true"
+                           class="checkbox checkbox-primary"
+                           {% if new_years_eve_closure.get('enabled', true) %}checked{% endif %} />
+                    <span class="label-text">31.12 Silvester</span>
+                </label>
+                <label class="label">
+                    <span class="label-text-alt">Aktive Schließungen zählen nicht als Urlaubstage</span>
                 </label>
             </div>
 
@@ -175,35 +233,39 @@
         return true;
     }
 
-    // Initialize flatpickr with German locale and validation
-    const fpInstance = flatpickr("#vacation_carryover_expires", {
-        locale: "de",
-        dateFormat: "d.m.Y",
-        allowInput: true,
-        // Set reasonable date bounds to prevent nonsensical dates
-        minDate: new Date(1900, 0, 1),
-        maxDate: new Date(new Date().getFullYear() + 10, 11, 31), // 10 years in future
-        // Enable year input to trigger calendar update
-        onYearChange: function(selectedDates, dateStr, instance) {
-            // Force calendar redraw when year changes via spinbutton
-            instance.redraw();
-        },
-        // Validate date when calendar closes OR when date changes
-        onChange: function(selectedDates, dateStr, instance) {
-            // Only validate if there's a selected date
-            if (selectedDates.length > 0 && instance.input.value) {
-                // Delay validation slightly to let Flatpickr finish processing
-                setTimeout(function() {
+    function initializeDatePicker(selector) {
+        flatpickr(selector, {
+            locale: "de",
+            dateFormat: "d.m.Y",
+            allowInput: true,
+            // Set reasonable date bounds to prevent nonsensical dates
+            minDate: new Date(1900, 0, 1),
+            maxDate: new Date(new Date().getFullYear() + 10, 11, 31), // 10 years in future
+            // Enable year input to trigger calendar update
+            onYearChange: function(selectedDates, dateStr, instance) {
+                // Force calendar redraw when year changes via spinbutton
+                instance.redraw();
+            },
+            // Validate date when calendar closes OR when date changes
+            onChange: function(selectedDates, dateStr, instance) {
+                // Only validate if there's a selected date
+                if (selectedDates.length > 0 && instance.input.value) {
+                    // Delay validation slightly to let Flatpickr finish processing
+                    setTimeout(function() {
+                        validateDateInput(instance.input.value.trim(), instance);
+                    }, 50);
+                }
+            },
+            onClose: function(selectedDates, dateStr, instance) {
+                if (instance.input.value) {
                     validateDateInput(instance.input.value.trim(), instance);
-                }, 50);
+                }
             }
-        },
-        onClose: function(selectedDates, dateStr, instance) {
-            if (instance.input.value) {
-                validateDateInput(instance.input.value.trim(), instance);
-            }
-        }
-    });
+        });
+    }
+
+    initializeDatePicker("#vacation_carryover_expires");
+    initializeDatePicker("#employment_start_date");
 
     // Handle German number format conversion on form submit
     const form = document.getElementById('vacation-settings-form');
@@ -214,12 +276,14 @@
         const annualDays = document.getElementById('annual_vacation_days');
         const carryoverDays = document.getElementById('vacation_carryover_days');
         const carryoverExpires = document.getElementById('vacation_carryover_expires');
+        const employmentStartDate = document.getElementById('employment_start_date');
 
         // Store original values for restoration after submit
         const originalInitialDays = initialDays.value;
         const originalAnnualDays = annualDays.value;
         const originalCarryoverDays = carryoverDays.value;
         const originalCarryoverExpires = carryoverExpires.value;
+        const originalEmploymentStartDate = employmentStartDate.value;
 
         // Convert comma to dot for numeric fields
         if (initialDays.value) {
@@ -237,6 +301,10 @@
             const parts = carryoverExpires.value.split('.');
             carryoverExpires.value = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
+        if (employmentStartDate.value && employmentStartDate.value.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) {
+            const parts = employmentStartDate.value.split('.');
+            employmentStartDate.value = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
 
         // Restore original values after HTMX reads them
         setTimeout(function() {
@@ -244,6 +312,7 @@
             annualDays.value = originalAnnualDays;
             carryoverDays.value = originalCarryoverDays;
             carryoverExpires.value = originalCarryoverExpires;
+            employmentStartDate.value = originalEmploymentStartDate;
         }, 0);
     });
 })();

@@ -25,6 +25,7 @@ class TimeEntryUpdate(BaseModel):
     end_time: time | None = None
     break_minutes: int | None = Field(None, ge=0, le=480)
     notes: str | None = Field(None, max_length=500)
+    vacation_days: Decimal | None = Field(None, ge=0, le=1)
     absence_type: AbsenceType = AbsenceType.NONE
     updated_at: datetime | None = Field(None, description="Timestamp for optimistic locking")
 
@@ -99,6 +100,7 @@ class TimeEntryResponse(TimeEntryUpdate):
                     "end_time": data.end_time,
                     "break_minutes": data.break_minutes,
                     "notes": data.notes,
+                    "vacation_days": data.vacation_days,
                     "absence_type": data.absence_type,
                     "status": data.status,
                     "created_at": data.created_at,

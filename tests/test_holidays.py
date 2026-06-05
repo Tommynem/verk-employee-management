@@ -5,10 +5,19 @@ movable holidays based on Easter date calculation.
 """
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
-from source.core.holidays import calculate_easter, get_german_holidays, is_holiday
+from source.core.holidays import (
+    calculate_easter,
+    get_german_holidays,
+    get_german_holidays_for_settings,
+    get_holiday_state_code,
+    is_holiday,
+    is_holiday_for_settings,
+    is_non_vacation_consuming_closure_for_settings,
+)
 
 
 class TestEasterCalculation:
@@ -133,6 +142,128 @@ class TestGermanHolidays:
         # Whit Monday: 50 days after Easter
         assert date(2025, 6, 9) in holidays
         assert holidays[date(2025, 6, 9)] == "Pfingstmontag"
+
+
+class TestStateAwareGermanHolidays:
+    """Test Bundesland-aware German public holiday detection."""
+
+    @pytest.mark.unit
+    def test_default_none_excludes_nrw_specific_fronleichnam(self):
+        """Nationwide-only defaults do not include NRW-specific Fronleichnam."""
+        holidays = get_german_holidays(2026)
+
+        assert date(2026, 6, 4) not in holidays
+        assert is_holiday(date(2026, 6, 4), state_code=None) is False
+
+    @pytest.mark.unit
+    def test_nw_includes_fronleichnam_2026(self):
+        """NRW has Fronleichnam on June 4, 2026."""
+        holidays = get_german_holidays(2026, state_code="NW")
+
+        assert holidays[date(2026, 6, 4)] == "Fronleichnam"
+
+    @pytest.mark.unit
+    def test_nw_includes_allerheiligen_2026(self):
+        """NRW has Allerheiligen on November 1."""
+        holidays = get_german_holidays(2026, state_code="NW")
+
+        assert holidays[date(2026, 11, 1)] == "Allerheiligen"
+
+    @pytest.mark.unit
+    def test_nw_keeps_nationwide_holidays(self):
+        """State-specific holiday sets still include nationwide holidays."""
+        holidays = get_german_holidays(2026, state_code="NW")
+
+        assert holidays[date(2026, 10, 3)] == "Tag der Deutschen Einheit"
+        assert holidays[date(2026, 12, 25)] == "1. Weihnachtstag"
+
+    @pytest.mark.unit
+    def test_is_holiday_with_nw_state_code(self):
+        """is_holiday can include NRW-specific holidays."""
+        assert is_holiday(date(2026, 6, 4), state_code="NW") is True
+        assert is_holiday(date(2026, 6, 4), return_name=True, state_code="NW") == (True, "Fronleichnam")
+
+    @pytest.mark.unit
+    def test_get_holiday_state_code_from_settings_object(self):
+        """Settings-like objects can provide the state code."""
+        settings = SimpleNamespace(holiday_state_code="NW")
+
+        assert get_holiday_state_code(settings) == "NW"
+
+    @pytest.mark.unit
+    def test_get_holiday_state_code_from_schedule_json(self):
+        """Settings schedule_json can provide the state code."""
+        settings = SimpleNamespace(schedule_json={"holidays": {"bundesland": "DE-NW"}})
+
+        assert get_holiday_state_code(settings) == "NW"
+
+    @pytest.mark.unit
+    def test_settings_helpers_use_state_code(self):
+        """Settings-aware helpers include NRW-specific holidays."""
+        settings = SimpleNamespace(schedule_json={"holiday_state_code": "NW"})
+
+        holidays = get_german_holidays_for_settings(2026, settings)
+
+        assert holidays[date(2026, 6, 4)] == "Fronleichnam"
+        assert is_holiday_for_settings(date(2026, 6, 4), settings, return_name=True) == (True, "Fronleichnam")
+
+    @pytest.mark.unit
+    def test_settings_helpers_default_to_nationwide_only(self):
+        """Missing settings state keeps nationwide-only behavior."""
+        settings = SimpleNamespace(schedule_json={})
+
+        holidays = get_german_holidays_for_settings(2026, settings)
+
+        assert date(2026, 6, 4) not in holidays
+        assert is_holiday_for_settings(date(2026, 6, 4), settings) is False
+
+
+class TestCompanyClosures:
+    """Test settings-backed company closure detection."""
+
+    @pytest.mark.unit
+    def test_default_closures_apply_when_settings_exist(self):
+        """Settings without explicit closure config use the default 24.12 closure."""
+        settings = SimpleNamespace(schedule_json={})
+
+        assert is_non_vacation_consuming_closure_for_settings(date(2025, 12, 24), settings, True) == (
+            True,
+            "Heiligabend",
+        )
+
+    @pytest.mark.unit
+    def test_none_settings_preserves_legacy_no_closure_behavior(self):
+        """Callers without settings do not get company closures implicitly."""
+        assert is_non_vacation_consuming_closure_for_settings(date(2025, 12, 24), None) is False
+
+    @pytest.mark.unit
+    def test_disabled_default_closure_does_not_match(self):
+        """Configured disabled closures override enabled defaults."""
+        settings = SimpleNamespace(schedule_json={"company_closures": {"12-24": {"enabled": False}}})
+
+        assert is_non_vacation_consuming_closure_for_settings(date(2025, 12, 24), settings) is False
+
+    @pytest.mark.unit
+    def test_list_style_closure_shape_is_supported(self):
+        """Imported list-style closures can use the original consumes_vacation flag."""
+        settings = SimpleNamespace(
+            schedule_json={
+                "company_closures": [
+                    {
+                        "month": 2,
+                        "day": 3,
+                        "name": "Betriebsschliessung",
+                        "recurring": True,
+                        "consumes_vacation": False,
+                    }
+                ]
+            }
+        )
+
+        assert is_non_vacation_consuming_closure_for_settings(date(2026, 2, 3), settings, True) == (
+            True,
+            "Betriebsschliessung",
+        )
 
 
 class TestIsHoliday:

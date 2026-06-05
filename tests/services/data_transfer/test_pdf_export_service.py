@@ -348,6 +348,36 @@ class TestPDFExportServiceExportPDF:
         assert '<div class="summary-value">1</div>' in FakePDFGenerator.html
 
     @pytest.mark.asyncio
+    async def test_export_pdf_vacation_days_uses_policy_and_fractional_days(self, monkeypatch):
+        """PDF vacation-day count uses fractional days and company closures."""
+
+        class FakePDFGenerator:
+            html = ""
+
+            async def generate_pdf_bytes(self, html, landscape=True):
+                FakePDFGenerator.html = html
+                return b"%PDF-test"
+
+            async def close(self):
+                return None
+
+        monkeypatch.setattr(
+            "source.services.data_transfer.pdf_export_service.PDFGenerator",
+            FakePDFGenerator,
+        )
+        service = PDFExportService()
+        settings = UserSettingsFactory.build(user_id=1, weekly_target_hours=Decimal("32.00"))
+        entries = [
+            VacationEntryFactory.build(user_id=1, work_date=date(2025, 12, 23), vacation_days=Decimal("0.50")),
+            VacationEntryFactory.build(user_id=1, work_date=date(2025, 12, 24), vacation_days=Decimal("1.00")),
+        ]
+
+        await service.export_pdf(entries, settings, user_id=1, year=2025, month=12)
+
+        assert "Urlaubstage im Monat" in FakePDFGenerator.html
+        assert '<div class="summary-value">0,5</div>' in FakePDFGenerator.html
+
+    @pytest.mark.asyncio
     async def test_export_pdf_december_month_formatting(self):
         """Test export_pdf handles December (month 12) correctly."""
         service = PDFExportService()

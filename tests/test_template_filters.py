@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from source.api.context import format_balance, format_duration, format_hours
+from source.api.context import format_balance, format_days, format_duration, format_hours
 
 
 class TestFormatHoursFilter:
@@ -142,3 +142,23 @@ class TestFormatBalanceFilter:
     def test_format_balance_very_large_negative(self):
         """Very large negative balance formats correctly."""
         assert format_balance(Decimal("-100.5")) == "-100:30"
+
+
+class TestFormatDaysFilter:
+    """Tests for vacation day formatting."""
+
+    def test_format_days_whole_number(self):
+        """Whole vacation days do not show noisy decimals."""
+        assert format_days(Decimal("2.00")) == "2"
+
+    def test_format_days_half_day(self):
+        """Half vacation days use German decimal comma."""
+        assert format_days(Decimal("0.50")) == "0,5"
+
+    def test_format_days_quarter_day(self):
+        """Quarter vacation days preserve useful precision."""
+        assert format_days(Decimal("0.25")) == "0,25"
+
+    def test_format_days_none(self):
+        """None returns dash placeholder."""
+        assert format_days(None) == "-"

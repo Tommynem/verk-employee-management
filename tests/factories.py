@@ -38,6 +38,7 @@ class TimeEntryFactory(factory.Factory):
     end_time = time(15, 0)
     break_minutes = 30
     notes = None
+    vacation_days = None
     absence_type = AbsenceType.NONE
     status = RecordStatus.DRAFT
     created_at = factory.LazyFunction(datetime.now)
@@ -54,6 +55,7 @@ class VacationEntryFactory(TimeEntryFactory):
     start_time = None
     end_time = None
     break_minutes = 0
+    vacation_days = Decimal("1.00")
 
 
 class SickEntryFactory(TimeEntryFactory):
@@ -98,6 +100,8 @@ class UserSettingsFactory(factory.Factory):
     annual_vacation_days = None
     vacation_carryover_days = None
     vacation_carryover_expires = None
+    holiday_state = None
+    employment_start_date = None
     employee_first_name = None
     employee_last_name = None
     employee_job_role = None

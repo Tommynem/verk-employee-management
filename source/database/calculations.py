@@ -4,11 +4,55 @@ This module provides pure functions for calculating hours, targets, and balances
 without modifying database models.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
+from source.core import holidays as holiday_policy
 from source.database.enums import AbsenceType
 from source.database.models import TimeEntry, UserSettings
+
+
+def is_public_holiday_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: bool = False,
+) -> bool | tuple[bool, str | None]:
+    """Check public holidays using settings-aware core helpers."""
+    return holiday_policy.is_holiday_for_settings(check_date, settings, return_name=return_name)
+
+
+def is_non_vacation_consuming_closure_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: bool = False,
+) -> bool | tuple[bool, str | None]:
+    """Check enabled company closures that do not consume vacation days."""
+    return holiday_policy.is_non_vacation_consuming_closure_for_settings(
+        check_date,
+        settings,
+        return_name=return_name,
+    )
+
+
+def is_non_working_day_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: bool = False,
+) -> bool | tuple[bool, str | None]:
+    """Return public holidays and non-vacation-consuming company closures."""
+    is_holiday, holiday_name = is_public_holiday_for_settings(check_date, settings, return_name=True)
+    if is_holiday:
+        return (True, holiday_name) if return_name else True
+
+    is_closure, closure_name = is_non_vacation_consuming_closure_for_settings(
+        check_date,
+        settings,
+        return_name=True,
+    )
+    if is_closure:
+        return (True, closure_name) if return_name else True
+
+    return (False, None) if return_name else False
 
 
 def actual_hours(entry: TimeEntry) -> Decimal:
@@ -71,8 +115,11 @@ def target_hours(entry: TimeEntry, settings: UserSettings) -> Decimal:
     if weekday >= 5:
         return Decimal("0.00")
 
-    # Vacation and public holidays are not target work days.
+    # Vacation, manual holiday entries, public holidays, and non-vacation
+    # company closures are not target work days.
     if entry.absence_type in (AbsenceType.VACATION, AbsenceType.HOLIDAY):
+        return Decimal("0.00")
+    if is_non_working_day_for_settings(entry.work_date, settings):
         return Decimal("0.00")
 
     # Calculate daily target (weekly / 5 workdays)
@@ -119,6 +166,9 @@ def balance(entry: TimeEntry, settings: UserSettings) -> Decimal:
 
 __all__ = [
     "actual_hours",
+    "is_non_vacation_consuming_closure_for_settings",
+    "is_non_working_day_for_settings",
+    "is_public_holiday_for_settings",
     "target_hours",
     "balance",
 ]

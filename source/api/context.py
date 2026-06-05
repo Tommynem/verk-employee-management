@@ -158,12 +158,25 @@ def format_balance(value: Decimal | None) -> str:
     return f"{sign}{hours}:{minutes:02d}"
 
 
+def format_days(value: Decimal | float | int | None) -> str:
+    """Format day values with German decimal comma and no noisy zeros."""
+    if value is None:
+        return "-"
+
+    decimal_value = Decimal(str(value)).quantize(Decimal("0.01"))
+    if decimal_value == decimal_value.to_integral_value():
+        return str(int(decimal_value))
+
+    return f"{decimal_value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
 # Register custom Jinja2 filters
 templates.env.filters["hours"] = format_hours_decimal  # Original filter name for backward compatibility
 templates.env.filters["minutes"] = format_minutes
 templates.env.filters["format_hours"] = format_hours
 templates.env.filters["format_duration"] = format_duration
 templates.env.filters["format_balance"] = format_balance
+templates.env.filters["format_days"] = format_days
 
 
 def render_template(request: Request, template_name: str, **context) -> str:

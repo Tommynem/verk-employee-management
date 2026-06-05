@@ -5,13 +5,14 @@ to PDF format with monthly summary data.
 """
 
 import base64
+import calendar
 from datetime import date, datetime
 from pathlib import Path
 from typing import SupportsFloat
 
 from jinja2 import Environment, FileSystemLoader
 
-from source.api.context import format_balance, format_hours
+from source.api.context import format_balance, format_days, format_hours
 from source.database.models import TimeEntry, UserSettings
 from source.documents.pdf_generator import PDFGenerator
 from source.services.data_transfer.dataclasses import ExportResult
@@ -67,6 +68,7 @@ def get_template_env() -> Environment:
     # Register custom filters for HH:MM time formatting
     env.filters["format_hours"] = format_hours
     env.filters["format_balance"] = format_balance
+    env.filters["format_days"] = format_days
     return env
 
 
@@ -137,8 +139,13 @@ class PDFExportService:
         vacation_service = VacationCalculationService()
         if month_entries:
             month_start = date(year, month, 1)
-            month_end = max(entry.work_date for entry in month_entries)
-            monthly_vacation_days = vacation_service.count_vacation_days(month_entries, month_start, month_end)
+            month_end = date(year, month, calendar.monthrange(year, month)[1])
+            monthly_vacation_days = vacation_service.count_vacation_days(
+                month_entries,
+                month_start,
+                month_end,
+                settings,
+            )
         else:
             monthly_vacation_days = 0
 
