@@ -440,8 +440,6 @@ async def new_row(
                 default_break_minutes = 0
 
         # Check for German public holidays - override break time to 0
-        from source.core.holidays import is_holiday
-
         if is_holiday(default_date):
             default_break_minutes = 0
 
