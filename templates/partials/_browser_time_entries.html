@@ -155,10 +155,13 @@
 {% endif %}
 
 <div class="card bg-base-100 shadow-md border border-base-300 rounded-lg overflow-hidden">
-    <div class="overflow-x-auto relative">
-        {# Horizontal scroll indicator for mobile - gradient fade on right edge #}
-        <div class="absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-base-100 to-transparent pointer-events-none z-10 md:hidden" id="scroll-indicator"></div>
-        <table id="time-entries-table" class="table w-full">
+    <div class="relative">
+        {# Horizontal scroll indicators for mobile #}
+        <div class="absolute top-0 left-0 bottom-0 w-12 bg-gradient-to-r from-base-100 to-transparent pointer-events-none z-10 transition-opacity duration-300 opacity-0 md:hidden" id="scroll-indicator-left"></div>
+        <div class="absolute top-0 right-0 bottom-0 w-12 bg-gradient-to-l from-base-100 to-transparent pointer-events-none z-10 transition-opacity duration-300 md:hidden" id="scroll-indicator-right"></div>
+
+        <div id="time-entries-container" class="overflow-x-auto">
+            <table id="time-entries-table" class="table w-full">
             <thead>
                 <tr class="bg-neutral text-white">
                     <th class="font-bold text-sm">Tag</th>
@@ -337,26 +340,48 @@
     // Horizontal Scroll Indicator (ISSUE M11 Fix)
     // ========================================
 
-    function updateScrollIndicator() {
-        const container = document.querySelector('.overflow-x-auto');
-        const indicator = document.getElementById('scroll-indicator');
+    (function() {
+        const container = document.getElementById('time-entries-container');
+        const indicatorLeft = document.getElementById('scroll-indicator-left');
+        const indicatorRight = document.getElementById('scroll-indicator-right');
 
-        if (container && indicator) {
-            const isScrolledToEnd = container.scrollLeft + container.clientWidth >= container.scrollWidth - 5;
-            indicator.style.opacity = isScrolledToEnd ? '0' : '1';
+        if (!container || !indicatorLeft || !indicatorRight) return;
+
+        function updateScrollIndicators() {
+            const scrollLeft = container.scrollLeft;
+            const scrollWidth = container.scrollWidth;
+            const clientWidth = container.clientWidth;
+
+            // Show left indicator if not at the very start
+            indicatorLeft.style.opacity = scrollLeft > 5 ? '1' : '0';
+
+            // Show right indicator if not at the very end
+            const isScrolledToEnd = scrollLeft + clientWidth >= scrollWidth - 5;
+            indicatorRight.style.opacity = isScrolledToEnd ? '0' : '1';
         }
-    }
 
-    // Update indicator on scroll
-    const scrollContainer = document.querySelector('.overflow-x-auto');
-    if (scrollContainer) {
-        scrollContainer.addEventListener('scroll', updateScrollIndicator);
+        // Update on scroll
+        container.addEventListener('scroll', updateScrollIndicators);
+
+        // Update on window resize (debounced)
+        let resizeTimeout;
+        const onResize = () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(updateScrollIndicators, 100);
+        };
+        window.addEventListener('resize', onResize);
+
         // Initial check
-        updateScrollIndicator();
-    }
+        updateScrollIndicators();
 
-    // Update on window resize
-    window.addEventListener('resize', updateScrollIndicator);
+        // Cleanup listener on HTMX swap to prevent duplicates
+        document.body.addEventListener('htmx:beforeSwap', function cleanup(evt) {
+            if (evt.detail.target.id === 'time-entries-content') {
+                window.removeEventListener('resize', onResize);
+                document.body.removeEventListener('htmx:beforeSwap', cleanup);
+            }
+        });
+    })();
 
     // ========================================
     // Unsaved Changes Warning (ISSUE M9 Fix)
