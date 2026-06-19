@@ -11,7 +11,7 @@ Usage:
 import argparse
 import csv
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import openpyxl
@@ -111,10 +111,9 @@ def process_sheet(ws, rows: list, stats: dict):
         rows: List to append row dictionaries to
         stats: Dictionary to track statistics
     """
-    sheet_name = ws.title
     data_start_row = 9  # Data starts at row 9 based on file structure
 
-    for row_idx, row in enumerate(ws.iter_rows(min_row=data_start_row, values_only=True), start=data_start_row):
+    for _row_idx, row in enumerate(ws.iter_rows(min_row=data_start_row, values_only=True), start=data_start_row):
         # Column indices (0-based): A=0, B=1, D=3, F=5, O=14, R=17
         date_val = row[0] if len(row) > 0 else None
         start_time = row[1] if len(row) > 1 else None
