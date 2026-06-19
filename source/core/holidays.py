@@ -8,8 +8,10 @@ for years 1583-4099 in the Gregorian calendar.
 """
 
 from datetime import date, timedelta
+from functools import lru_cache
 
 
+@lru_cache
 def calculate_easter(year: int) -> date:
     """Calculate Easter Sunday date for a given year.
 
@@ -45,6 +47,7 @@ def calculate_easter(year: int) -> date:
     return date(year, month, day)
 
 
+@lru_cache
 def get_german_holidays(year: int) -> dict[date, str]:
     """Get all German nationwide public holidays for a given year.
 
