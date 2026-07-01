@@ -6,10 +6,27 @@ without modifying database models.
 
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal, overload
 
 from source.core import holidays as holiday_policy
 from source.database.enums import AbsenceType
 from source.database.models import TimeEntry, UserSettings
+
+
+@overload
+def is_public_holiday_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: Literal[False] = False,
+) -> bool: ...
+
+
+@overload
+def is_public_holiday_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: Literal[True],
+) -> tuple[bool, str | None]: ...
 
 
 def is_public_holiday_for_settings(
@@ -19,6 +36,22 @@ def is_public_holiday_for_settings(
 ) -> bool | tuple[bool, str | None]:
     """Check public holidays using settings-aware core helpers."""
     return holiday_policy.is_holiday_for_settings(check_date, settings, return_name=return_name)
+
+
+@overload
+def is_non_vacation_consuming_closure_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: Literal[False] = False,
+) -> bool: ...
+
+
+@overload
+def is_non_vacation_consuming_closure_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: Literal[True],
+) -> tuple[bool, str | None]: ...
 
 
 def is_non_vacation_consuming_closure_for_settings(
@@ -32,6 +65,22 @@ def is_non_vacation_consuming_closure_for_settings(
         settings,
         return_name=return_name,
     )
+
+
+@overload
+def is_non_working_day_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: Literal[False] = False,
+) -> bool: ...
+
+
+@overload
+def is_non_working_day_for_settings(
+    check_date: date,
+    settings: object | None,
+    return_name: Literal[True],
+) -> tuple[bool, str | None]: ...
 
 
 def is_non_working_day_for_settings(
@@ -115,11 +164,11 @@ def target_hours(entry: TimeEntry, settings: UserSettings) -> Decimal:
     if weekday >= 5:
         return Decimal("0.00")
 
-    # Vacation, manual holiday entries, public holidays, and non-vacation
-    # company closures are not target work days.
+    # Vacation and manual holiday entries are explicit time-account entries.
+    # Vacation-policy holidays/closures are used for vacation consumption only;
+    # applying them here would rewrite historical time balances when vacation
+    # settings change.
     if entry.absence_type in (AbsenceType.VACATION, AbsenceType.HOLIDAY):
-        return Decimal("0.00")
-    if is_non_working_day_for_settings(entry.work_date, settings):
         return Decimal("0.00")
 
     # Calculate daily target (weekly / 5 workdays)

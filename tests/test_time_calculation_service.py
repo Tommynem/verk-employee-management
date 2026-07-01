@@ -363,8 +363,8 @@ class TestWeeklySummary:
         assert summary.total_balance == Decimal("-18.00")
 
     @pytest.mark.unit
-    def test_weekly_summary_missing_day_uses_bundesland_holiday_policy(self):
-        """Missing days on settings-aware holidays are excluded from target totals."""
+    def test_weekly_summary_missing_day_ignores_vacation_holiday_policy(self):
+        """Vacation policy holidays do not change time-account weekly targets."""
         week_start = date(2026, 6, 1)
         settings = UserSettingsFactory.build(weekly_target_hours=Decimal("40.00"), holiday_state="NW")
         service = TimeCalculationService()
@@ -372,8 +372,8 @@ class TestWeeklySummary:
         summary = service.weekly_summary([], settings, week_start)
 
         assert summary.days[3].date == date(2026, 6, 4)
-        assert summary.days[3].target_hours == Decimal("0.00")
-        assert summary.total_target == Decimal("32.00")
+        assert summary.days[3].target_hours == Decimal("8.00")
+        assert summary.total_target == Decimal("40.00")
 
 
 class TestMonthlySummary:
@@ -417,11 +417,11 @@ class TestMonthlySummary:
         summary = service.monthly_summary(entries, settings, 2026, 1)
 
         assert summary.total_actual == Decimal("7.50")
-        assert summary.total_target == Decimal("128.00")
+        assert summary.total_target == Decimal("134.40")
 
     @pytest.mark.unit
-    def test_monthly_summary_excludes_non_vacation_company_closures_from_target(self):
-        """Monthly target totals exclude configured non-vacation company closures."""
+    def test_monthly_summary_ignores_vacation_company_closures_for_time_balance(self):
+        """Vacation policy company closures do not change monthly time targets."""
         settings = UserSettingsFactory.build(
             weekly_target_hours=Decimal("40.00"),
             schedule_json={
@@ -449,7 +449,18 @@ class TestMonthlySummary:
 
         summary = service.monthly_summary([], settings, 2026, 12)
 
-        assert summary.total_target == Decimal("160.00")
+        assert summary.total_target == Decimal("184.00")
+
+    @pytest.mark.unit
+    def test_monthly_summary_keeps_time_balance_independent_from_vacation_holiday_policy(self):
+        """Vacation policy holidays must not rewrite historical time-account balances."""
+        settings = UserSettingsFactory.build(weekly_target_hours=Decimal("30.00"), holiday_state="NW")
+        service = TimeCalculationService()
+
+        summary = service.monthly_summary([], settings, 2026, 6)
+
+        assert summary.total_target == Decimal("132.00")
+        assert summary.period_balance == Decimal("-132.00")
 
     @pytest.mark.unit
     def test_monthly_summary_totals(self):
